@@ -24,6 +24,31 @@ pub(crate) struct ClientShellEndpoint {
     pub(crate) methods: Option<HashSet<String>>,
 }
 
+impl ClientShellEndpoint {
+    /// This window's own session or another session on this machine, not a saved SSH machine.
+    pub(super) fn is_local_session(&self) -> bool {
+        match &self.endpoint_id {
+            ClientEndpointId::Local => true,
+            ClientEndpointId::Ssh(id) => crate::client::endpoint::is_local_session_profile(
+                id.as_str(),
+                crate::client::endpoint::LOCAL_SESSION_TARGET,
+                &self.label,
+            ),
+        }
+    }
+
+    /// Local sessions are listed only while running, so their badge appears only when
+    /// something is wrong. Local never shows one; saved SSH machines always do.
+    pub(super) fn shows_status_badge(&self) -> bool {
+        match self.endpoint_id {
+            ClientEndpointId::Local => false,
+            ClientEndpointId::Ssh(_) => {
+                self.status != ClientEndpointStatus::Online || !self.is_local_session()
+            }
+        }
+    }
+}
+
 pub(super) struct MachineHit {
     pub(super) rect: Rect,
     pub(super) status_badge: Rect,
@@ -110,14 +135,7 @@ impl ClientShellState {
                 .iter()
                 .position(|label| label == &endpoint.label)
                 .unwrap_or(order.len());
-            let local = match &endpoint.endpoint_id {
-                ClientEndpointId::Local => true,
-                ClientEndpointId::Ssh(id) => crate::client::endpoint::is_local_session_profile(
-                    id.as_str(),
-                    crate::client::endpoint::LOCAL_SESSION_TARGET,
-                    &endpoint.label,
-                ),
-            };
+            let local = endpoint.is_local_session();
             let name = local.then(|| endpoint.label.to_ascii_lowercase());
             (listed, !local, name)
         });

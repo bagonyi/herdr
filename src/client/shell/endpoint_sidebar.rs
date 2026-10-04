@@ -91,7 +91,7 @@ pub(super) fn render_collapsed(
                 }),
             );
             let mut status_badge = Rect::default();
-            if !endpoint.endpoint_id.is_local() {
+            if endpoint.shows_status_badge() {
                 let (glyph, _, color) = endpoint_status_presentation(endpoint.status, palette);
                 let width = display_width(glyph).min(rect.width);
                 status_badge = Rect::new(rect.right().saturating_sub(width), rect.y, width, 1);
@@ -609,7 +609,7 @@ fn render_endpoint_row(
         "! auth".to_owned()
     } else if endpoint.status == ClientEndpointStatus::Attention {
         "! error".to_owned()
-    } else if endpoint.endpoint_id.is_local() {
+    } else if !endpoint.shows_status_badge() {
         String::new()
     } else if state.is_empty() {
         glyph.to_owned()

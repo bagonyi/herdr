@@ -952,6 +952,7 @@ fn render_navigator_overlay(
             ClientNavigatorTarget::Machine { endpoint_id } if !endpoint_id.is_local() => endpoints
                 .iter()
                 .find(|endpoint| &endpoint.endpoint_id == endpoint_id)
+                .filter(|endpoint| endpoint.shows_status_badge())
                 .map(|endpoint| endpoint.status),
             _ => None,
         };
