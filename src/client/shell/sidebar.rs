@@ -26,10 +26,14 @@ pub(in crate::client::shell) fn workspace_active_background(
 
 pub(in crate::client::shell) fn collapsed_sidebar_sections(
     area: Rect,
+    agents_hidden: bool,
 ) -> (Rect, Option<u16>, Rect) {
     let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
     if content.is_empty() {
         return (Rect::default(), None, Rect::default());
+    }
+    if agents_hidden {
+        return (above_sidebar_toggle(content), None, Rect::default());
     }
     if content.height < 7 {
         return (content, None, Rect::default());
@@ -41,6 +45,38 @@ pub(in crate::client::shell) fn collapsed_sidebar_sections(
         Rect::new(content.x, content.y, content.width, workspace_height),
         Some(divider_y),
         Rect::new(content.x, divider_y + 1, content.width, detail_height),
+    )
+}
+
+/// The spaces list, the agents panel and the divider between them. A hidden agents panel leaves
+/// the spaces list everything above the sidebar toggle row.
+pub(in crate::client::shell) fn expanded_sidebar_sections(
+    area: Rect,
+    split: f32,
+    agents_hidden: bool,
+) -> (Rect, Rect, Rect) {
+    if agents_hidden {
+        let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
+        return (
+            above_sidebar_toggle(content),
+            Rect::default(),
+            Rect::default(),
+        );
+    }
+    let (workspace_area, detail_area) = crate::ui::expanded_sidebar_sections(area, split);
+    (
+        workspace_area,
+        detail_area,
+        crate::ui::sidebar_section_divider_rect(area, split),
+    )
+}
+
+fn above_sidebar_toggle(content: Rect) -> Rect {
+    Rect::new(
+        content.x,
+        content.y,
+        content.width,
+        content.height.saturating_sub(1),
     )
 }
 
@@ -56,7 +92,8 @@ pub(crate) fn render_collapsed_sidebar(
     let selection_background = workspace_selection_background(palette);
     let active_background = workspace_active_background(palette, selected_workspace_id.is_some());
     render_sidebar_background(buffer, area, palette);
-    let (workspace_area, divider_y, detail_area) = collapsed_sidebar_sections(area);
+    let (workspace_area, divider_y, detail_area) =
+        collapsed_sidebar_sections(area, config.agents.hidden);
     for (index, workspace) in snapshot
         .workspaces
         .iter()
@@ -211,10 +248,9 @@ pub(crate) fn render_sidebar(
     } else {
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
-    let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
-    hits.sidebar_section_divider =
-        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+    let (workspace_area, detail_area, section_divider) =
+        expanded_sidebar_sections(area, state.sidebar_section_split, config.agents.hidden);
+    hits.sidebar_section_divider = section_divider;
     put_text(
         buffer,
         workspace_area.x,

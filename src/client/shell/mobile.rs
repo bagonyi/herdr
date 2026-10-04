@@ -616,7 +616,7 @@ fn mobile_items(
         config.agent_panel_sort,
     );
     let agent_view_label = snapshot.agent_view_label.as_deref();
-    if !agents.is_empty() || agent_view_label.is_some() {
+    if !config.agents.hidden && (!agents.is_empty() || agent_view_label.is_some()) {
         let title = agent_view_label
             .map(|label| format!("agents · {label}"))
             .unwrap_or_else(|| "agents".to_owned());

@@ -523,3 +523,35 @@ fn close_confirmation_error_becomes_client_owned_overlay_and_stable_group_close(
             if params.workspace_id == "ws_1" && params.close_group
     ));
 }
+
+#[test]
+fn hidden_agents_panel_gives_the_sidebar_to_spaces() {
+    let sidebar_text = |state: &mut ClientShellState| {
+        let frame = state.compose(106, 30).expect("expanded sidebar");
+        frame
+            .cells
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>()
+    };
+    let mut config = Config::default();
+    let mut shown = ClientShellState::new(ClientShellConfig::from_config(&config));
+    shown.set_snapshot(Box::new(snapshot()));
+    shown.set_pane_surface(surface());
+    assert!(sidebar_text(&mut shown).contains(" agents"));
+    assert!(shown.hits.workspace_body.bottom() + 1 < shown.hits.sidebar_toggle.y);
+
+    config.ui.sidebar.agents.hidden = true;
+    let mut hidden = ClientShellState::new(ClientShellConfig::from_config(&config));
+    hidden.set_snapshot(Box::new(snapshot()));
+    hidden.set_pane_surface(surface());
+    let text = sidebar_text(&mut hidden);
+    assert!(text.contains(" spaces"));
+    assert!(!text.contains(" agents"));
+    assert_eq!(hidden.hits.sidebar_section_divider, Rect::default());
+    assert_eq!(
+        hidden.hits.workspace_body.bottom() + 1,
+        hidden.hits.sidebar_toggle.y,
+        "the spaces list ends at its footer, right above the sidebar toggle"
+    );
+}
