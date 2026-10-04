@@ -1,0 +1,90 @@
+# herdr fork
+
+A personal fork of [herdrdev/herdr](https://github.com/herdrdev/herdr). The `patches` branch is
+the latest Herdr release with the changes below on top. Everything else is stock Herdr; see the
+[README](README.md) and [herdr.dev/docs](https://herdr.dev/docs/).
+
+## what's changed
+
+### sessions in the sidebar
+
+- Other running sessions on this computer are listed in the sidebar next to saved SSH machines.
+  Click one to switch to it in the same window; its agents and notifications show up too. Only
+  running named sessions are listed, not the default session.
+- `herdr --session <name>` opens that session instead of the one you last selected.
+- Sessions are sorted A–Z, so every window shows the same order. The `machine_order` setting
+  puts chosen sessions or machines first.
+- Sessions on this computer don't show the green "online" badge, since they're only listed while
+  they run. The badge still appears when something is wrong.
+- The list is headed "sessions" instead of "machines".
+
+### agents
+
+- Each space shows a red count of agents waiting for you (finished and not yet looked at, or
+  blocked), like an app badge.
+- A window remembers which agents it has already seen when you detach and reattach, so those
+  counts don't reset.
+- The agents panel can be hidden, giving the spaces list the whole sidebar.
+
+### mouse
+
+- The tab, session or space row under the mouse gets a lighter background.
+- The sidebar's dividing line lights up while the mouse is over it or dragging it.
+
+## settings
+
+Two settings are new; both go in `~/.config/herdr/config.toml`:
+
+```toml
+[ui.sidebar.spaces]
+# Sessions or machines to list first, in this order; the rest keep their usual order.
+machine_order = ["work", "personal"]
+
+[ui.sidebar.agents]
+# Hide the agents panel; the spaces list takes the whole sidebar.
+hidden = true
+```
+
+## building
+
+There are no releases or binaries; build it from source. You need
+[rustup](https://rustup.rs) (it installs the Rust version in `rust-toolchain.toml`) and
+[Zig](https://ziglang.org/download/) 0.16.0, either on `PATH` or named by the `ZIG` variable.
+
+```bash
+git clone -b patches https://github.com/bagonyi/herdr
+cd herdr
+cargo build --release --locked
+# then copy target/release/herdr somewhere on your PATH
+```
+
+Turn off Herdr's update check in `~/.config/herdr/config.toml`, and don't run `herdr update`:
+both would replace the fork with stock Herdr.
+
+```toml
+[update]
+version_check = false
+```
+
+## caveats
+
+- Only built and tested on macOS on Apple silicon.
+- The branch is rebased onto each new Herdr release and force-pushed, so `git pull` fails
+  after an update. Use `git fetch` and `git reset --hard origin/patches` instead; this throws
+  away any changes of your own.
+- It still reports the upstream version number, for example `herdr 0.9.3`.
+
+## license
+
+Herdr is licensed under the [Apache License 2.0](LICENSE). This fork changes files under `src/`,
+adds a note at the top of `README.md`, and adds this file. Each change is a separate commit on
+top of a Herdr release tag. This fork doesn't carry the tags, so fetch them from Herdr to list
+the commits and every changed file:
+
+```bash
+git remote add upstream https://github.com/herdrdev/herdr
+git fetch upstream --tags
+base=$(git describe --tags --abbrev=0 --match 'v[0-9]*' patches)
+git log --oneline "$base"..patches
+git diff --stat "$base"..patches
+```

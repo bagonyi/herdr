@@ -1,3 +1,9 @@
+> [!NOTE]
+> **This is a personal fork of [herdrdev/herdr](https://github.com/herdrdev/herdr).**
+> The `patches` branch is the latest Herdr release plus a few sidebar and tab bar changes;
+> [FORK.md](FORK.md) lists them and explains how to build it.
+> The install instructions below install stock Herdr, not this fork.
+
 # herdr
 
 
