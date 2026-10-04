@@ -2699,3 +2699,47 @@ fn single_session_spaces_show_the_count_too() {
         Some(crate::protocol::color_to_u32(state.config.palette.red))
     );
 }
+
+#[test]
+fn a_reattached_window_keeps_its_counts() {
+    let path =
+        std::env::temp_dir().join(format!("herdr-reattach-counts-{}.json", std::process::id()));
+    let seen_path = path.with_extension("seen.json");
+    let _ = std::fs::remove_file(&seen_path);
+    let window = || {
+        let mut state = ClientShellState::new(
+            ClientShellConfig::from_config(&Config::default()).with_preferences_path(path.clone()),
+        );
+        state.set_snapshot(Box::new(snapshot()));
+        state.set_pane_surface(surface());
+        state
+    };
+    let mut asking = snapshot();
+    asking.revision = 2;
+    asking.agents = vec![ClientShellAgent {
+        pane_id: "pane_9".into(),
+        ..agent("asking", AgentStatus::Blocked, 2)
+    }];
+    let count_badge = |state: &mut ClientShellState| {
+        state.set_snapshot(Box::new(asking.clone()));
+        state.set_pane_surface(PaneSurfaceFrame {
+            projection_revision: 2,
+            ..surface()
+        });
+        let frame = state.compose(100, 28).unwrap();
+        count_badge_bg(&frame, state.hits.workspaces[0].rect)
+    };
+    let red = Some(crate::protocol::color_to_u32(
+        ClientShellConfig::from_config(&Config::default())
+            .palette
+            .red,
+    ));
+
+    assert_eq!(count_badge(&mut window()), red);
+    assert_eq!(
+        count_badge(&mut window()),
+        red,
+        "a new window on the same server boot still counts the unseen question"
+    );
+    std::fs::remove_file(seen_path).expect("remove saved seen state");
+}

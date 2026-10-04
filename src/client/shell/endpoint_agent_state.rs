@@ -161,6 +161,31 @@ impl EndpointAgentPresentation {
         })
     }
 
+    pub(super) fn boot_id(&self) -> Option<&str> {
+        self.boot_id.as_deref()
+    }
+
+    /// What a reattached window needs to know which agents it has already seen.
+    pub(super) fn saved_seen(&self) -> super::agent_seen::SavedAgentSeen {
+        super::agent_seen::SavedAgentSeen {
+            acknowledged: self.acknowledged.clone(),
+            completed: self.completed.clone(),
+            working: self.working.clone(),
+        }
+    }
+
+    /// Continues from what this window saw of the same server boot before it detached.
+    pub(super) fn restore_seen(
+        &mut self,
+        boot_id: String,
+        saved: super::agent_seen::SavedAgentSeen,
+    ) {
+        self.boot_id = Some(boot_id);
+        self.acknowledged = saved.acknowledged;
+        self.completed = saved.completed;
+        self.working = saved.working;
+    }
+
     /// Finished or asking a question, and its pane has not been on screen since.
     pub(super) fn awaits_user(&self, agent: &ClientShellAgent) -> bool {
         match agent.agent_status {
@@ -513,5 +538,41 @@ mod tests {
         assert!(presentation.awaits_user(&finished.agents[0]));
         presentation.acknowledge_surface(&mut finished, &surface(4), Some(true));
         assert!(!presentation.awaits_user(&finished.agents[0]));
+    }
+
+    #[test]
+    fn a_restored_window_keeps_what_it_had_not_seen() {
+        let mut before = EndpointAgentPresentation::default();
+        let mut baseline = snapshot(AgentStatus::Working, 4, 1);
+        before.project_snapshot(&mut baseline);
+        let mut asking = snapshot(AgentStatus::Blocked, 5, 2);
+        before.project_snapshot(&mut asking);
+        assert!(before.awaits_user(&asking.agents[0]));
+
+        let mut fresh = EndpointAgentPresentation::default();
+        let mut first = snapshot(AgentStatus::Blocked, 5, 7);
+        fresh.project_snapshot(&mut first);
+        assert!(
+            !fresh.awaits_user(&first.agents[0]),
+            "without a saved record, waiting agents count as seen"
+        );
+
+        let mut restored = EndpointAgentPresentation::default();
+        restored.restore_seen("endpoint-boot".into(), before.saved_seen());
+        let mut reattached = snapshot(AgentStatus::Blocked, 5, 7);
+        restored.project_snapshot(&mut reattached);
+        assert!(restored.awaits_user(&reattached.agents[0]));
+
+        let mut working = snapshot(AgentStatus::Working, 6, 8);
+        before.project_snapshot(&mut working);
+        let mut restored = EndpointAgentPresentation::default();
+        restored.restore_seen("endpoint-boot".into(), before.saved_seen());
+        let mut finished_while_detached = snapshot(AgentStatus::Idle, 7, 9);
+        restored.project_snapshot(&mut finished_while_detached);
+        assert_eq!(
+            finished_while_detached.agents[0].agent_status,
+            AgentStatus::Done
+        );
+        assert!(restored.awaits_user(&finished_while_detached.agents[0]));
     }
 }
