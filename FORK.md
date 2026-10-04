@@ -4,6 +4,26 @@ A personal fork of [herdrdev/herdr](https://github.com/herdrdev/herdr). The `pat
 the latest Herdr release with the changes below on top. Everything else is stock Herdr; see the
 [README](README.md) and [herdr.dev/docs](https://herdr.dev/docs/).
 
+## why sessions
+
+Herdr is usually run as one session, with a space for each project. This fork is built around
+one session per project instead, much like keeping one tmux session per project: each session
+holds just that project's spaces and tabs. One window isn't cluttered with work from every
+project, and two projects can each have a space called `workflow` without clashing.
+
+Stock Herdr already runs several named sessions (`herdr --session <name>`), but a window shows
+one at a time. Switching means detaching and attaching again, and the sidebar, agent counts and
+notifications only cover the session you're attached to.
+
+This fork lists every running session on the computer in the sidebar, the way Herdr lists SSH
+machines, with each session's spaces below it. Clicking a session or one of its spaces switches
+to it in the same window, and the red counts and notifications cover every session at once.
+
+![Herdr with three sessions in the sidebar and red counts of waiting agents on its spaces](assets/fork-screenshot.png)
+
+Three sessions in one window, each space showing how many agents are waiting for you. The 🟢 ⏳ 🟠
+markers in the tab bar come from a separate Herdr plugin, not from this fork.
+
 ## what's changed
 
 ### sessions in the sidebar
