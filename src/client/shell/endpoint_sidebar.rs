@@ -92,7 +92,25 @@ pub(super) fn render_collapsed(
                 }),
             );
             let mut status_badge = Rect::default();
-            if endpoint.shows_status_badge() {
+            let unseen = if collapsed {
+                endpoint.unseen_agents().count()
+            } else {
+                0
+            };
+            if unseen > 0 && !endpoint.shows_status_badge() {
+                let count = if unseen > 9 {
+                    "9+".to_owned()
+                } else {
+                    unseen.to_string()
+                };
+                put_right_text(
+                    buffer,
+                    rect,
+                    rect.y,
+                    &count,
+                    super::sidebar::unseen_badge_style(palette),
+                );
+            } else if endpoint.shows_status_badge() {
                 let (glyph, _, color) = endpoint_status_presentation(endpoint.status, palette);
                 let width = display_width(glyph).min(rect.width);
                 status_badge = Rect::new(rect.right().saturating_sub(width), rect.y, width, 1);
@@ -159,19 +177,29 @@ pub(super) fn render_collapsed(
             } else {
                 Modifier::empty()
             };
+            let waiting = super::sidebar::unseen_agents_in_space(
+                endpoint,
+                snapshot,
+                workspace,
+                &HashSet::new(),
+            );
             put_text(
                 buffer,
                 rect.x,
                 rect.y,
                 number_width,
                 &number,
-                Style::default()
-                    .fg(if focused && !stale {
-                        palette.text
-                    } else {
-                        palette.overlay0
-                    })
-                    .add_modifier(dim),
+                if waiting > 0 && !stale {
+                    super::sidebar::unseen_badge_style(palette)
+                } else {
+                    Style::default()
+                        .fg(if focused && !stale {
+                            palette.text
+                        } else {
+                            palette.overlay0
+                        })
+                        .add_modifier(dim)
+                },
             );
             put_text(
                 buffer,
@@ -415,6 +443,11 @@ pub(super) fn render_expanded(
                     buffer,
                     rect,
                     marker,
+                    if collapsed {
+                        endpoint.unseen_agents().count()
+                    } else {
+                        0
+                    },
                     endpoint,
                     collapsed && &endpoint.endpoint_id == state.active_endpoint_id,
                     state.machine_diagnostics,
@@ -498,6 +531,19 @@ pub(super) fn render_expanded(
                     snapshot,
                     entry.index,
                     collapsed_groups,
+                    palette,
+                );
+                super::sidebar::render_unseen_badge(
+                    buffer,
+                    rect,
+                    rect.right()
+                        .saturating_sub(if group_toggle.is_some() { 2 } else { 0 }),
+                    super::sidebar::unseen_agents_in_space(
+                        endpoint,
+                        snapshot,
+                        workspace,
+                        collapsed_groups,
+                    ),
                     palette,
                 );
                 hits.workspaces.push(WorkspaceHit {
@@ -594,6 +640,7 @@ fn render_endpoint_row(
     buffer: &mut Buffer,
     rect: Rect,
     marker: &str,
+    unseen: usize,
     endpoint: &ClientShellEndpoint,
     highlighted: bool,
     auth: &super::machine_diagnostics::MachineDiagnostics,
@@ -620,11 +667,15 @@ fn render_endpoint_row(
         format!("{glyph} {state}")
     };
     let signal_width = display_width(&signal).min(rect.width);
+    let unseen_width = super::sidebar::unseen_badge_width(unseen).min(rect.width);
+    let right_width = signal_width
+        .saturating_add(unseen_width)
+        .saturating_add(u16::from(signal_width > 0 && unseen_width > 0));
     put_text(
         buffer,
         rect.x,
         rect.y,
-        rect.width.saturating_sub(signal_width.saturating_add(1)),
+        rect.width.saturating_sub(right_width.saturating_add(1)),
         &format!(" {marker} {}", endpoint.label),
         Style::default()
             .fg(
@@ -642,6 +693,14 @@ fn render_endpoint_row(
         rect.y,
         &signal,
         auth.badge_style(endpoint, palette, Style::default().fg(color)),
+    );
+    super::sidebar::render_unseen_badge(
+        buffer,
+        rect,
+        rect.right()
+            .saturating_sub(right_width.saturating_sub(unseen_width)),
+        unseen,
+        palette,
     );
     Rect::new(
         rect.right().saturating_sub(signal_width),

@@ -2591,3 +2591,111 @@ fn navigator_foreign_workspace_heading_keeps_the_workspace_target() {
         }] if activated == &endpoint_id && workspace_id == "ws_1"
     ));
 }
+
+fn row_text(frame: &FrameData, row: Rect) -> String {
+    frame.cells[row.y as usize * frame.width as usize + row.x as usize..][..row.width as usize]
+        .iter()
+        .map(|cell| cell.symbol.as_str())
+        .collect()
+}
+
+/// The background behind the digit of a ` 1 ` count badge in `row`, if the row has one.
+fn count_badge_bg(frame: &FrameData, row: Rect) -> Option<u32> {
+    let text = row_text(frame, row);
+    let column = text[..text.find(" 1 ")?].chars().count();
+    Some(frame.cells[row.y as usize * frame.width as usize + row.x as usize + column + 1].bg)
+}
+
+#[test]
+fn spaces_show_a_red_count_of_agents_awaiting_the_user() {
+    let (mut state, remote) = state_with_remote();
+    let mut projection = state
+        .endpoints
+        .iter()
+        .find(|endpoint| endpoint.endpoint_id == remote)
+        .unwrap()
+        .snapshot
+        .clone()
+        .unwrap();
+    projection.revision += 1;
+    projection.agents = vec![
+        agent("asking", AgentStatus::Blocked, 2),
+        ClientShellAgent {
+            pane_id: "pane_2".into(),
+            ..agent("working", AgentStatus::Working, 3)
+        },
+    ];
+    state.set_endpoint_snapshot(&remote, projection);
+    let red = crate::protocol::color_to_u32(state.config.palette.red);
+    let space_row = |state: &ClientShellState, id: &ClientEndpointId| {
+        state
+            .hits
+            .workspaces
+            .iter()
+            .find(|hit| &hit.endpoint_id == id)
+            .unwrap()
+            .rect
+    };
+    let machine_row = |state: &ClientShellState, id: &ClientEndpointId| {
+        state
+            .hits
+            .machines
+            .iter()
+            .find(|hit| &hit.endpoint_id == id)
+            .unwrap()
+            .rect
+    };
+
+    let frame = state.compose(120, 40).unwrap();
+    assert_eq!(
+        count_badge_bg(&frame, space_row(&state, &remote)),
+        Some(red)
+    );
+    assert_eq!(
+        count_badge_bg(&frame, machine_row(&state, &remote)),
+        None,
+        "an expanded machine leaves the count to its spaces"
+    );
+    assert_eq!(
+        count_badge_bg(&frame, space_row(&state, &ClientEndpointId::Local)),
+        None
+    );
+
+    state.collapsed_endpoints.insert(remote.clone());
+    let frame = state.compose(120, 40).unwrap();
+    let header = machine_row(&state, &remote);
+    assert_eq!(
+        count_badge_bg(&frame, header),
+        Some(red),
+        "a collapsed machine shows the count of its hidden spaces"
+    );
+    let text = row_text(&frame, header);
+    assert!(
+        text.trim_end().ends_with('●'),
+        "status badge stays rightmost: {text}"
+    );
+}
+
+#[test]
+fn single_session_spaces_show_the_count_too() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut asking = snapshot();
+    asking.revision += 1;
+    asking.agents = vec![ClientShellAgent {
+        pane_id: "pane_9".into(),
+        ..agent("asking", AgentStatus::Blocked, 2)
+    }];
+    state.set_snapshot(Box::new(asking));
+    state.set_pane_surface(PaneSurfaceFrame {
+        projection_revision: 2,
+        ..surface()
+    });
+    let frame = state.compose(100, 28).unwrap();
+    assert!(state.hits.machines.is_empty());
+    assert_eq!(
+        count_badge_bg(&frame, state.hits.workspaces[0].rect),
+        Some(crate::protocol::color_to_u32(state.config.palette.red))
+    );
+}

@@ -37,6 +37,15 @@ impl ClientShellEndpoint {
         }
     }
 
+    /// Agents that finished or asked a question since the user last looked at their pane.
+    pub(super) fn unseen_agents(&self) -> impl Iterator<Item = &crate::protocol::ClientShellAgent> {
+        self.snapshot
+            .as_deref()
+            .into_iter()
+            .flat_map(|snapshot| &snapshot.agents)
+            .filter(|agent| self.agent_presentation.awaits_user(agent))
+    }
+
     /// Local sessions are listed only while running, so their badge appears only when
     /// something is wrong. Local never shows one; saved SSH machines always do.
     pub(super) fn shows_status_badge(&self) -> bool {

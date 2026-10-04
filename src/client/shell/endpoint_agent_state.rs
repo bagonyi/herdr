@@ -161,6 +161,18 @@ impl EndpointAgentPresentation {
         })
     }
 
+    /// Finished or asking a question, and its pane has not been on screen since.
+    pub(super) fn awaits_user(&self, agent: &ClientShellAgent) -> bool {
+        match agent.agent_status {
+            AgentStatus::Done => true,
+            AgentStatus::Blocked => self
+                .acknowledged
+                .get(&agent.pane_id)
+                .is_none_or(|sequence| *sequence < agent.state_change_seq),
+            _ => false,
+        }
+    }
+
     fn projected_status(&self, agent: &ClientShellAgent) -> AgentStatus {
         match agent.agent_status {
             AgentStatus::Idle | AgentStatus::Done => {
@@ -474,5 +486,32 @@ mod tests {
         assert!(!presentation.acknowledge_surface(&mut completed, &surface(1), Some(true)));
         assert!(!presentation.acknowledge_surface(&mut completed, &surface(2), Some(false)));
         assert_eq!(completed.agents[0].agent_status, AgentStatus::Done);
+    }
+
+    #[test]
+    fn finished_agents_and_questions_await_the_user_until_their_pane_is_on_screen() {
+        let mut presentation = EndpointAgentPresentation::default();
+        let mut baseline = snapshot(AgentStatus::Blocked, 4, 1);
+        presentation.project_snapshot(&mut baseline);
+        assert!(
+            !presentation.awaits_user(&baseline.agents[0]),
+            "a question already open when the client connects counts as seen"
+        );
+
+        let mut asking = snapshot(AgentStatus::Blocked, 5, 2);
+        presentation.project_snapshot(&mut asking);
+        assert!(presentation.awaits_user(&asking.agents[0]));
+        presentation.acknowledge_surface(&mut asking, &surface(2), Some(true));
+        assert!(!presentation.awaits_user(&asking.agents[0]));
+
+        let mut working = snapshot(AgentStatus::Working, 6, 3);
+        presentation.project_snapshot(&mut working);
+        assert!(!presentation.awaits_user(&working.agents[0]));
+        let mut finished = snapshot(AgentStatus::Idle, 7, 4);
+        presentation.project_snapshot(&mut finished);
+        assert_eq!(finished.agents[0].agent_status, AgentStatus::Done);
+        assert!(presentation.awaits_user(&finished.agents[0]));
+        presentation.acknowledge_surface(&mut finished, &surface(4), Some(true));
+        assert!(!presentation.awaits_user(&finished.agents[0]));
     }
 }

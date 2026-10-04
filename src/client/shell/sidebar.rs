@@ -334,6 +334,10 @@ pub(crate) fn render_sidebar(
         .saturating_sub(metrics.offset_from_bottom);
     let show_scrollbar = metrics.max_offset_from_bottom > 0 && body.width > 1;
     let content_width = body.width.saturating_sub(u16::from(show_scrollbar));
+    let active_endpoint = state
+        .endpoints
+        .iter()
+        .find(|endpoint| &endpoint.endpoint_id == state.active_endpoint_id);
     let mut y = body.y;
     for (entry_position, entry) in entries.iter().enumerate().skip(*state.workspace_scroll) {
         let Some(workspace) = snapshot.workspaces.get(entry.index) else {
@@ -378,6 +382,16 @@ pub(crate) fn render_sidebar(
             state.collapsed_groups,
             palette,
         );
+        if let Some(endpoint) = active_endpoint {
+            render_unseen_badge(
+                buffer,
+                rect,
+                rect.right()
+                    .saturating_sub(if group_toggle.is_some() { 2 } else { 0 }),
+                unseen_agents_in_space(endpoint, snapshot, workspace, state.collapsed_groups),
+                palette,
+            );
+        }
         hits.workspaces.push(WorkspaceHit {
             rect,
             endpoint_id: ClientEndpointId::Local,
@@ -657,6 +671,69 @@ pub(in crate::client::shell) fn displayed_workspace_status(
         .map(|candidate| candidate.agent_status)
         .max_by_key(|status| status_priority(*status))
         .unwrap_or(workspace.agent_status)
+}
+
+/// Agents waiting for the user in this space, or in its whole worktree group while the group is
+/// collapsed into it.
+pub(in crate::client::shell) fn unseen_agents_in_space(
+    endpoint: &ClientShellEndpoint,
+    snapshot: &ClientShellSnapshot,
+    workspace: &ClientShellWorkspace,
+    collapsed_groups: &HashSet<String>,
+) -> usize {
+    let group = workspace.worktree.as_ref().filter(|worktree| {
+        !worktree.is_linked_worktree && collapsed_groups.contains(&worktree.key)
+    });
+    endpoint
+        .unseen_agents()
+        .filter(|agent| match group {
+            None => agent.workspace_id == workspace.workspace_id,
+            Some(worktree) => snapshot.workspaces.iter().any(|candidate| {
+                candidate.workspace_id == agent.workspace_id
+                    && candidate
+                        .worktree
+                        .as_ref()
+                        .is_some_and(|candidate| candidate.key == worktree.key)
+            }),
+        })
+        .count()
+}
+
+/// A red count of agents waiting for the user, like an app badge on macOS.
+pub(in crate::client::shell) fn unseen_badge_style(palette: &Palette) -> Style {
+    Style::default()
+        .fg(super::super::panel_contrast_fg(palette))
+        .bg(palette.red)
+        .add_modifier(Modifier::BOLD)
+}
+
+pub(in crate::client::shell) fn unseen_badge_width(count: usize) -> u16 {
+    if count == 0 {
+        0
+    } else {
+        display_width(&format!(" {count} "))
+    }
+}
+
+/// Draws the count badge so that it ends at `right`; nothing when no agent is waiting.
+pub(in crate::client::shell) fn render_unseen_badge(
+    buffer: &mut Buffer,
+    row: Rect,
+    right: u16,
+    count: usize,
+    palette: &Palette,
+) {
+    let width = unseen_badge_width(count).min(right.saturating_sub(row.x));
+    if width > 0 {
+        put_text(
+            buffer,
+            right.saturating_sub(width),
+            row.y,
+            width,
+            &format!(" {count} "),
+            unseen_badge_style(palette),
+        );
+    }
 }
 
 pub(in crate::client::shell) fn workspace_rows(
