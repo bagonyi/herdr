@@ -252,6 +252,7 @@ impl ClientShellState {
                 }
                 RawInputEvent::OuterFocusLost => {
                     outcome.repaint |= self.clear_link_hover();
+                    outcome.repaint |= self.clear_row_hover();
                     self.outer_focused = Some(false);
                     self.release_input_leases(&mut outcome);
                     outcome

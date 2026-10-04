@@ -30,6 +30,7 @@ mod notifications;
 mod overlay_input;
 mod preferences;
 mod render;
+mod row_hover;
 mod scroll;
 mod settings;
 mod state;
