@@ -2129,7 +2129,7 @@ fn navigator_uses_machine_parents_only_for_federated_clients() {
         })
         .collect::<Vec<_>>()
         .join("\n")
-        .contains(" machines"));
+        .contains(" sessions"));
     local.open_navigator_overlay();
     let ClientShellOverlay::Navigator(navigator) = local.overlay.as_ref().expect("navigator")
     else {

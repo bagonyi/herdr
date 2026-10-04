@@ -583,7 +583,7 @@ fn mobile_items(
     let palette = &config.palette;
     let mut items = Vec::new();
     if endpoints.len() > 1 {
-        items.push(MobileItem::section("machines", palette));
+        items.push(MobileItem::section("sessions", palette));
         for endpoint in endpoints {
             let background = palette.panel_bg;
             let (symbol, state, color) = endpoint_status_presentation(endpoint.status, palette);
