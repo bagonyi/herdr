@@ -727,7 +727,8 @@ pub(super) fn endpoint_status_presentation(
 pub(super) fn local_endpoint() -> ClientShellEndpoint {
     ClientShellEndpoint {
         endpoint_id: ClientEndpointId::Local,
-        label: "Local".into(),
+        // Other local sessions are listed as machines, so name this one too.
+        label: crate::session::active_name().unwrap_or_else(|| "Local".into()),
         status: ClientEndpointStatus::Online,
         snapshot: None,
         snapshot_generation: None,

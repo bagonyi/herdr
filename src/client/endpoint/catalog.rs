@@ -103,13 +103,35 @@ impl EndpointCatalog {
         Self::load_from_paths(&catalog_path(), &selection_path())
     }
 
+    /// The client's view: other running local sessions, then saved SSH machines.
+    pub(crate) fn load_for_client() -> Result<Self, String> {
+        let mut catalog =
+            Self::load_from_paths_with(&catalog_path(), &selection_path(), |catalog| {
+                catalog.ssh = with_local_sessions(std::mem::take(&mut catalog.ssh));
+            })?;
+        if crate::session::explicit_session_requested() {
+            // `--session X` opens X, not the machine last picked in any window.
+            catalog.select_local();
+        }
+        Ok(catalog)
+    }
+
     pub(crate) fn load_profiles() -> Result<Vec<SavedSshEndpoint>, String> {
         // Live clients keep their own selection, independent of other attached clients.
-        Self::load_from_path(&catalog_path()).map(|catalog| catalog.ssh)
+        Self::load_from_path(&catalog_path()).map(|catalog| with_local_sessions(catalog.ssh))
     }
 
     fn load_from_paths(catalog_path: &Path, selection_path: &Path) -> Result<Self, String> {
+        Self::load_from_paths_with(catalog_path, selection_path, |_| {})
+    }
+
+    fn load_from_paths_with(
+        catalog_path: &Path,
+        selection_path: &Path,
+        extend: impl FnOnce(&mut Self),
+    ) -> Result<Self, String> {
         let mut catalog = Self::load_from_path(catalog_path)?;
+        extend(&mut catalog);
         match load_selection_from_path(selection_path) {
             Ok(Some(selection)) => {
                 let valid = selection.selected_profile.as_ref().is_none_or(|selected| {
@@ -370,6 +392,51 @@ pub(super) fn store_private_json(
         .map_err(|error| format!("failed to persist {description} directory: {error}"))
 }
 
+/// Target of the profiles generated for local sessions. It is never passed to ssh.
+pub(crate) const LOCAL_SESSION_TARGET: &str = "local";
+
+/// Other running named sessions on this machine, A-Z, ahead of the saved profiles.
+/// They are generated on every read and never stored.
+fn with_local_sessions(mut saved: Vec<SavedSshEndpoint>) -> Vec<SavedSshEndpoint> {
+    saved.retain(|profile| {
+        !is_local_session_profile(profile.id.as_str(), &profile.target, &profile.session)
+    });
+    let home = crate::session::active_name();
+    let mut profiles = crate::session::list_sessions()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|session| {
+            session.running && !session.default && Some(&session.name) != home.as_ref()
+        })
+        .map(|session| SavedSshEndpoint {
+            id: local_session_profile_id(&session.name),
+            label: session.name.clone(),
+            target: LOCAL_SESSION_TARGET.into(),
+            session: session.name,
+            enabled: true,
+        })
+        .collect::<Vec<_>>();
+    profiles.sort_by_cached_key(|profile| profile.label.to_ascii_lowercase());
+    profiles.extend(saved);
+    profiles
+}
+
+pub(crate) fn is_local_session_profile(profile_id: &str, target: &str, session: &str) -> bool {
+    target == LOCAL_SESSION_TARGET && local_session_profile_id(session).as_str() == profile_id
+}
+
+/// Derived from the session name, so selection and collapse state survive restarts.
+fn local_session_profile_id(session: &str) -> ProfileId {
+    use sha2::{Digest as _, Sha256};
+    let digest = Sha256::digest(format!("herdr-local-session:{session}").as_bytes());
+    ProfileId(
+        digest[..super::PROFILE_ID_BYTES]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    )
+}
+
 pub(crate) fn catalog_path() -> PathBuf {
     crate::config::state_dir()
         .join("client")
@@ -578,5 +645,25 @@ mod tests {
             ..EndpointCatalog::default()
         };
         assert!(catalog.validate().is_err());
+    }
+
+    #[test]
+    fn local_session_profiles_need_both_the_local_target_and_derived_id() {
+        let id = local_session_profile_id("agents");
+        assert_eq!(ProfileId::parse(id.to_string()).unwrap(), id);
+        assert_eq!(id, local_session_profile_id("agents"));
+        assert_ne!(id, local_session_profile_id("build"));
+        assert!(is_local_session_profile(
+            id.as_str(),
+            LOCAL_SESSION_TARGET,
+            "agents"
+        ));
+        assert!(!is_local_session_profile(id.as_str(), "workbox", "agents"));
+        let ssh = SavedSshEndpoint::new("Local", LOCAL_SESSION_TARGET, "agents").unwrap();
+        assert!(!is_local_session_profile(
+            ssh.id.as_str(),
+            &ssh.target,
+            &ssh.session
+        ));
     }
 }

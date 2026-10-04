@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use super::attach::{find_installed_remote_herdr, RemoteSsh, SshStdioBridge};
 
 pub(crate) struct SavedSshBridge {
-    _bridge: SshStdioBridge,
+    _bridge: Option<SshStdioBridge>,
 }
 
 pub(crate) struct SavedSshStream {
@@ -17,6 +17,28 @@ pub(crate) fn connect_saved_ssh(
     target: &str,
     session: &str,
 ) -> io::Result<SavedSshStream> {
+    if let Some(name) = local_session_name(profile_id, target, session)? {
+        // Same socket the bridge would relay to; no ssh or bridge process needed.
+        let path = crate::session::client_socket_path_for(name.as_deref());
+        let stream = crate::ipc::connect_local_stream(&path).map_err(|error| {
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) {
+                // Transient: the catalog drops stopped sessions within a second.
+                io::Error::new(
+                    io::ErrorKind::ConnectionRefused,
+                    format!("session '{session}' is not running"),
+                )
+            } else {
+                error
+            }
+        })?;
+        return Ok(SavedSshStream {
+            stream,
+            bridge: SavedSshBridge { _bridge: None },
+        });
+    }
     let ssh = validated_saved_ssh(profile_id, target, session)?;
     let remote_herdr = find_installed_remote_herdr(&ssh)?;
     let metadata = remote_herdr.machine_metadata();
@@ -36,14 +58,16 @@ pub(crate) fn connect_saved_ssh(
     }
     Ok(SavedSshStream {
         stream,
-        bridge: SavedSshBridge { _bridge: bridge },
+        bridge: SavedSshBridge {
+            _bridge: Some(bridge),
+        },
     })
 }
 
 pub(crate) struct SavedSshApiBridge {
     path: PathBuf,
-    bridge: SshStdioBridge,
-    metadata_cache: crate::client::endpoint::SshMetadataCache,
+    bridge: Option<SshStdioBridge>,
+    metadata_cache: Option<crate::client::endpoint::SshMetadataCache>,
     pub(crate) used_cached_metadata: bool,
 }
 
@@ -54,6 +78,14 @@ impl SavedSshApiBridge {
         session: &str,
         use_cached_metadata: bool,
     ) -> io::Result<Self> {
+        if let Some(name) = local_session_name(profile_id, target, session)? {
+            return Ok(Self {
+                path: crate::session::api_socket_path_for(name.as_deref()),
+                bridge: None,
+                metadata_cache: None,
+                used_cached_metadata: false,
+            });
+        }
         let ssh = validated_saved_ssh(profile_id, target, session)?;
         let metadata_cache =
             crate::client::endpoint::SshMetadataCache::new(profile_id, target, session)?;
@@ -85,8 +117,8 @@ impl SavedSshApiBridge {
         )?;
         Ok(Self {
             path,
-            bridge,
-            metadata_cache,
+            bridge: Some(bridge),
+            metadata_cache: Some(metadata_cache),
             used_cached_metadata,
         })
     }
@@ -96,11 +128,13 @@ impl SavedSshApiBridge {
     }
 
     pub(crate) fn reported_failure(&self) -> Option<io::Error> {
-        self.bridge.reported_failure()
+        self.bridge.as_ref()?.reported_failure()
     }
 
     pub(crate) fn invalidate_metadata(&self) {
-        self.metadata_cache.invalidate();
+        if let Some(metadata_cache) = &self.metadata_cache {
+            metadata_cache.invalidate();
+        }
     }
 
     pub(crate) fn stale_metadata_failure(error: &io::Error) -> bool {
@@ -111,6 +145,9 @@ impl SavedSshApiBridge {
 }
 
 pub(crate) fn saved_ssh_bootstrap_command(target: &str, session: &str) -> String {
+    if target == crate::client::endpoint::LOCAL_SESSION_TARGET {
+        return format!("herdr --session {}", super::shell_quote(session));
+    }
     format!(
         "herdr --remote {} --session {}",
         super::shell_quote(target),
@@ -143,6 +180,21 @@ pub(crate) fn saved_ssh_failure_needs_attention(error: &io::Error) -> bool {
     ]
     .iter()
     .any(|needle| message.contains(needle))
+}
+
+/// Resolves a profile generated for a local session to that session's name
+/// (`None` is the default session). SSH profiles return `Ok(None)`.
+fn local_session_name(
+    profile_id: &str,
+    target: &str,
+    session: &str,
+) -> io::Result<Option<Option<String>>> {
+    if !crate::client::endpoint::is_local_session_profile(profile_id, target, session) {
+        return Ok(None);
+    }
+    crate::session::parse_target_name(session)
+        .map(Some)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
 }
 
 fn saved_bridge_path(profile_id: &str) -> PathBuf {
