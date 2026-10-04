@@ -144,6 +144,7 @@ impl ClientShellState {
                 &self.config.palette,
             );
         }
+        self.render_row_hover(&mut buffer);
         FrameData::from_ratatui_buffer_with_hyperlinks(&buffer, None, &[])
     }
 
