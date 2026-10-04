@@ -461,6 +461,9 @@ pub struct SpacesSidebarConfig {
     #[serde(deserialize_with = "deserialize_sidebar_rows")]
     pub rows: SpaceSidebarRows,
     pub row_gap: u16,
+    /// Machine labels listed first, in this order; the rest keep their default order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub machine_order: Vec<String>,
 }
 
 impl Default for SpacesSidebarConfig {
@@ -471,6 +474,7 @@ impl Default for SpacesSidebarConfig {
                 vec![SpaceSidebarToken::Branch, SpaceSidebarToken::GitStatus],
             ],
             row_gap: DEFAULT_SIDEBAR_ROW_GAP,
+            machine_order: Vec::new(),
         }
     }
 }

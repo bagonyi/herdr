@@ -97,6 +97,30 @@ impl ClientShellState {
                 .any(|endpoint| &endpoint.endpoint_id == endpoint_id)
         });
         self.endpoints = next;
+        self.apply_machine_order();
+    }
+
+    /// Labels in `[ui.sidebar.spaces] machine_order` come first, in that order. The rest
+    /// follow: local sessions A-Z (this window's own included, so every window agrees),
+    /// then saved machines in catalog order.
+    pub(super) fn apply_machine_order(&mut self) {
+        let order = &self.config.spaces.machine_order;
+        self.endpoints.sort_by_cached_key(|endpoint| {
+            let listed = order
+                .iter()
+                .position(|label| label == &endpoint.label)
+                .unwrap_or(order.len());
+            let local = match &endpoint.endpoint_id {
+                ClientEndpointId::Local => true,
+                ClientEndpointId::Ssh(id) => crate::client::endpoint::is_local_session_profile(
+                    id.as_str(),
+                    crate::client::endpoint::LOCAL_SESSION_TARGET,
+                    &endpoint.label,
+                ),
+            };
+            let name = local.then(|| endpoint.label.to_ascii_lowercase());
+            (listed, !local, name)
+        });
     }
 
     pub(crate) fn select_unavailable_local(&mut self) {
