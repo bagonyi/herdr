@@ -47,13 +47,16 @@ impl ClientShellState {
                     && self.navigation_target_valid(&pending.target)
             });
         // A resize invalidates pane geometry, not the healthy Local workspace chrome.
-        let local_snapshot = self.snapshot.as_deref().filter(|_| {
-            self.endpoints.len() == 1
-                && !self.sidebar_collapsed
-                && layout.sidebar.width > 0
-                && self.endpoint_status(&self.active_endpoint_id)
-                    == Some(ClientEndpointStatus::Online)
-        });
+        let local_healthy = self.snapshot.is_some()
+            && self.endpoints.len() == 1
+            && !self.sidebar_collapsed
+            && layout.sidebar.width > 0
+            && self.endpoint_status(&self.active_endpoint_id) == Some(ClientEndpointStatus::Online);
+        let sessions_sidebar = self.lists_sessions();
+        let local_snapshot = self
+            .snapshot
+            .as_deref()
+            .filter(|_| local_healthy && !sessions_sidebar);
         let mut render_state = render::ShellRenderState {
             machine_diagnostics: &self.machine_diagnostics,
             endpoints: &self.endpoints,
@@ -77,6 +80,7 @@ impl ClientShellState {
             reveal_navigation_workspace: &mut self.reveal_navigation_workspace,
             dragged_workspace_id: None,
             workspace_drop_indicator_row: None,
+            sessions_sidebar,
         };
         if let Some(snapshot) = local_snapshot {
             render::render_sidebar(
@@ -115,7 +119,7 @@ impl ClientShellState {
         } else {
             Rect::new(0, 0, cols, 1)
         };
-        if local_snapshot.is_none() || self.endpoint_error.is_some() {
+        if !local_healthy || self.endpoint_error.is_some() {
             render::put_text(
                 &mut buffer,
                 message_area.x,
@@ -206,6 +210,7 @@ impl ClientShellState {
             _ => (None, None),
         };
         let mut buffer = Buffer::empty(Rect::new(0, 0, cols, rows));
+        let sessions_sidebar = self.lists_sessions();
         self.hits = render::render_shell(
             &mut buffer,
             layout,
@@ -234,6 +239,7 @@ impl ClientShellState {
                 reveal_navigation_workspace: &mut self.reveal_navigation_workspace,
                 dragged_workspace_id,
                 workspace_drop_indicator_row,
+                sessions_sidebar,
             },
         );
         self.hits.panes = surface

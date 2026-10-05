@@ -428,6 +428,14 @@ pub(super) fn render_expanded(
         .saturating_sub(metrics.offset_from_bottom);
     let show_scrollbar = metrics.max_offset_from_bottom > 0 && body.width > 1;
     let content_width = body.width.saturating_sub(u16::from(show_scrollbar));
+    if config.mouse_capture && content_width > 12 {
+        hits.new_session = super::session_create::render_plus(
+            buffer,
+            body.x.saturating_add(content_width).saturating_sub(2),
+            workspace_area.y,
+            palette,
+        );
+    }
     let mut y = body.y;
     for (row_index, row) in rows.iter().enumerate().skip(*state.workspace_scroll) {
         match row {
@@ -439,7 +447,7 @@ pub(super) fn render_expanded(
                 let rect = Rect::new(body.x, y, content_width, 1);
                 let collapsed = state.collapsed_endpoints.contains(&endpoint.endpoint_id);
                 let marker = if collapsed { "▸" } else { "▾" };
-                let status_badge = render_endpoint_row(
+                let (status_badge, new_workspace) = render_endpoint_row(
                     buffer,
                     rect,
                     marker,
@@ -450,9 +458,14 @@ pub(super) fn render_expanded(
                     },
                     endpoint,
                     collapsed && &endpoint.endpoint_id == state.active_endpoint_id,
+                    config.mouse_capture && endpoint.status == ClientEndpointStatus::Online,
                     state.machine_diagnostics,
                     palette,
                 );
+                if !new_workspace.is_empty() {
+                    hits.new_session_workspace
+                        .push((new_workspace, endpoint.endpoint_id.clone()));
+                }
                 hits.machines.push(MachineHit {
                     rect,
                     status_badge,
@@ -643,9 +656,10 @@ fn render_endpoint_row(
     unseen: usize,
     endpoint: &ClientShellEndpoint,
     highlighted: bool,
+    plus: bool,
     auth: &super::machine_diagnostics::MachineDiagnostics,
     palette: &Palette,
-) -> Rect {
+) -> (Rect, Rect) {
     if highlighted {
         buffer.set_style(rect, Style::default().bg(palette.active_row_bg));
     }
@@ -671,11 +685,15 @@ fn render_endpoint_row(
     let right_width = signal_width
         .saturating_add(unseen_width)
         .saturating_add(u16::from(signal_width > 0 && unseen_width > 0));
+    // A + for a new space sits left of the badges, or in the last-but-one column.
+    let plus_x = rect.right().saturating_sub(right_width.saturating_add(2));
+    let plus = plus && plus_x > rect.x.saturating_add(4);
     put_text(
         buffer,
         rect.x,
         rect.y,
-        rect.width.saturating_sub(right_width.saturating_add(1)),
+        rect.width
+            .saturating_sub(right_width.saturating_add(if plus { 3 } else { 1 })),
         &format!(" {marker} {}", endpoint.label),
         Style::default()
             .fg(
@@ -702,10 +720,18 @@ fn render_endpoint_row(
         unseen,
         palette,
     );
-    Rect::new(
-        rect.right().saturating_sub(signal_width),
-        rect.y,
-        signal_width,
-        1,
+    let new_workspace = if plus {
+        super::session_create::render_plus(buffer, plus_x, rect.y, palette)
+    } else {
+        Rect::default()
+    };
+    (
+        Rect::new(
+            rect.right().saturating_sub(signal_width),
+            rect.y,
+            signal_width,
+            1,
+        ),
+        new_workspace,
     )
 }

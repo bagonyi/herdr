@@ -51,6 +51,7 @@ pub fn run_server() -> io::Result<()> {
         .build()
         .map_err(io::Error::other)?;
 
+    let mut session_ended = false;
     let result = rt.block_on(async {
         // Create the App (with AppState, event channels, etc.).
         let mut app = app::App::new(
@@ -87,10 +88,15 @@ pub fn run_server() -> io::Result<()> {
         print_ready_message(&api::socket_path(), &client_socket_path());
         server.app.run_plugin_startup_hooks();
 
-        server.run().await
+        let result = server.run().await;
+        session_ended = server.delete_after_shutdown();
+        result
     });
 
     rt.shutdown_timeout(Duration::from_millis(100));
+    if session_ended {
+        super::session_end::delete_ended_session();
+    }
     crate::logging::shutdown("server");
     result
 }
@@ -152,6 +158,7 @@ fn run_handoff_import_server(socket_path: &Path, token: &str) -> io::Result<()> 
         .build()
         .map_err(io::Error::other)?;
 
+    let mut session_ended = false;
     let result = rt.block_on(async {
         let app = app::App::new_from_handoff(
             &loaded_config.config,
@@ -195,10 +202,15 @@ fn run_handoff_import_server(socket_path: &Path, token: &str) -> io::Result<()> 
         info!("handoff import server started");
         print_ready_message(&api::socket_path(), &client_socket_path());
         server.app.run_plugin_startup_hooks();
-        server.run().await
+        let result = server.run().await;
+        session_ended = server.delete_after_shutdown();
+        result
     });
 
     rt.shutdown_timeout(Duration::from_millis(100));
+    if session_ended {
+        super::session_end::delete_ended_session();
+    }
     crate::logging::shutdown("server");
     result
 }

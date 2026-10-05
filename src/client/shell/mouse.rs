@@ -1806,6 +1806,10 @@ impl ClientShellState {
                 if !self.config.mouse_capture {
                     return;
                 }
+                if self.open_session_context_menu(point, mouse.column, mouse.row) {
+                    outcome.repaint = true;
+                    return;
+                }
                 let workspace_id = (!self.sidebar_collapsed)
                     .then(|| self.active_endpoint_workspace_at(point))
                     .flatten();
@@ -1999,6 +2003,9 @@ impl ClientShellState {
                     self.agent_scroll = 0;
                     self.persist_chrome_preferences(outcome);
                     outcome.repaint = true;
+                    return;
+                }
+                if self.handle_session_plus_click(point, outcome) {
                     return;
                 }
                 if self.handle_endpoint_machine_click(point, outcome) {

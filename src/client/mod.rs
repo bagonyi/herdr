@@ -473,6 +473,7 @@ async fn run_client_loop(
     let mut federated = endpoint_catalog.has_enabled_ssh();
     if let Some(shell) = state.shell.as_mut() {
         shell.set_graphics_cell_size(initial_cell_width_px, initial_cell_height_px);
+        shell.set_named_session(!is_remote_client && crate::session::active_name().is_some());
         shell.set_endpoint_catalog(&endpoint_catalog.ssh);
         shell.set_endpoint_methods_for(
             &endpoint::ClientEndpointId::Local,
@@ -764,6 +765,32 @@ async fn run_client_loop(
                 shell.timer_delay(std::time::Instant::now())
             });
         let timer_deadline = client_timer.deadline(std::time::Instant::now(), timer_delay);
+        if scheduled_activation.is_none()
+            && pending_activation.is_none()
+            && state.deferred_local_activation.is_none()
+        {
+            // Sessions started or stopped from the sidebar.
+            if let Some(shell) = state.shell.as_mut() {
+                let (actions, mut repaint) = shell.poll_sessions(std::time::Instant::now());
+                if !actions.is_empty() {
+                    repaint |= dispatch_client_shell_actions(
+                        actions,
+                        &mut endpoint_commands,
+                        &mut write_stream,
+                        Some(shell),
+                        &mut state.detached_process_children,
+                        &mut scheduled_activation,
+                    )?
+                    .1;
+                }
+                let frame = repaint
+                    .then(|| shell.compose(state.reported_size.0, state.reported_size.1))
+                    .flatten();
+                if let Some(frame) = frame {
+                    state.present_frozen_chrome(frame);
+                }
+            }
+        }
         let immediate_event = scheduled_activation.take();
         #[cfg(windows)]
         let event = if let Some(event) = immediate_event {
@@ -1708,7 +1735,11 @@ async fn run_client_loop(
                         unreachable!("retirements are handled before presentation gating")
                     }
                     ServerMessage::ServerShutdown { reason } => {
-                        if !federated && endpoint_id.is_local() {
+                        // A window also closes when the session it shows, its own, is stopped,
+                        // but not for a live update, which reconnects.
+                        let stopped = reason.as_deref() == Some("server is shutting down")
+                            && write_stream.active_id().is_local();
+                        if (!federated || stopped) && endpoint_id.is_local() {
                             return Err(ClientError::ServerShutdown { reason });
                         }
                         write_stream.fail(

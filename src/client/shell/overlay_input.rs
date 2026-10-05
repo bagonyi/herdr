@@ -876,8 +876,16 @@ impl ClientShellState {
         }
 
         if matches!(self.overlay, Some(ClientShellOverlay::ConfirmClose(_))) {
+            let session = matches!(
+                &self.overlay,
+                Some(ClientShellOverlay::ConfirmClose(confirm)) if confirm.session.is_some()
+            );
             if key.code == KeyCode::Enter {
                 self.accept_close_confirmation(outcome);
+            } else if key.code == KeyCode::Esc && session {
+                // Opened from a right-click, so it returns to where it was.
+                self.overlay = None;
+                outcome.repaint = true;
             } else if key.code == KeyCode::Esc {
                 self.overlay = None;
                 self.mode = ClientShellMode::Navigate;
@@ -980,6 +988,10 @@ impl ClientShellState {
                     label: Some(trimmed.to_owned()),
                 },
             )),
+            ClientRenameTarget::Session(prompt) => {
+                self.save_session_prompt(prompt, trimmed, outcome);
+                None
+            }
         };
         if let Some(method) = method {
             self.push_endpoint_method(method, outcome);
@@ -1014,6 +1026,10 @@ impl ClientShellState {
             return;
         };
         outcome.repaint = true;
+        if let Some(stop) = confirm.session {
+            self.stop_session(stop, outcome);
+            return;
+        }
         let method = if let Some(target) = confirm.tab_target {
             if target.workspace.endpoint_id != self.active_endpoint_id
                 || !self.navigation_target_valid(&target.workspace)
@@ -1119,6 +1135,7 @@ impl ClientShellState {
                     "Close workspace?".to_owned()
                 },
                 detail: format!("{} — {scope}", workspace.label),
+                session: None,
             },
         ));
         true

@@ -54,6 +54,24 @@ pub(super) fn dispatch_client_shell_actions(
                     "client shell action awaits its presentation family"
                 );
             }
+            shell::ClientShellAction::StopSession { name, delete } => {
+                let stop = shell::spawn_session_stop(name.clone(), delete);
+                if let Some(shell) = shell.as_deref_mut() {
+                    shell.track_session_stop(name, stop);
+                }
+            }
+            shell::ClientShellAction::StartSession { name } => {
+                match shell::spawn_session_server(&name) {
+                    Ok(child) => detached_process_children.extend(child),
+                    Err(error) => {
+                        warn!(%error, session = %name, "failed to start session server");
+                        if let Some(shell) = shell.as_deref_mut() {
+                            shell.session_start_failed(&name, &error);
+                            repaint = true;
+                        }
+                    }
+                }
+            }
         }
     }
     // A source-off-first handoff leaves the registry's committed identity pointing at a
@@ -216,6 +234,9 @@ pub(super) fn begin_endpoint_activation(
     now: std::time::Instant,
     scheduled_activation: &mut Option<ClientLoopEvent>,
 ) -> Result<(), ClientError> {
+    if let Some(shell) = state.shell.as_mut() {
+        shell.endpoint_activation_requested(&endpoint_id, target.is_some());
+    }
     state.deferred_local_activation = None;
     if endpoint_id.is_local() && !local_activation_metadata_ready(state, endpoints) {
         state.deferred_local_activation = Some(endpoint::EndpointActivationIntent {
@@ -426,6 +447,18 @@ pub(super) fn complete_endpoint_activation(
     };
     state.unfreeze_presentation();
     if successor.is_none() {
+        // A space asked for from another session's + button, now that session is shown.
+        if let Some(shell) = state.shell.as_mut() {
+            let actions = shell.take_pending_workspace_create();
+            dispatch_client_shell_actions(
+                actions,
+                endpoint_commands,
+                endpoints,
+                Some(shell),
+                &mut state.detached_process_children,
+                &mut None,
+            )?;
+        }
         let active_endpoint = endpoints.active_id().clone();
         let cancelled = endpoint_commands.send_next(&active_endpoint, endpoints);
         if let Some(shell) = state.shell.as_mut() {

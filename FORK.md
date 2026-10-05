@@ -37,7 +37,20 @@ markers in the tab bar come from a separate Herdr plugin,
   puts chosen sessions or machines first.
 - Sessions on this computer don't show the green "online" badge, since they're only listed while
   they run. The badge still appears when something is wrong.
-- The list is headed "sessions" instead of "machines".
+- The list is headed "sessions" instead of "machines". A window opened on a named session
+  shows the list even when its session is the only one running.
+- A + after the "sessions" heading asks for a name and starts that session, as
+  `herdr --session <name>` would, then switches to it. Its first space opens in your home folder.
+  Spaces in the name become dashes, so "Test session" starts `Test-session`.
+- A + on each session's row creates a space in that session, switching to it first if needed.
+- Right-clicking another session offers "Stop session" (its spaces come back when you start it
+  again with the + and its name) and "Delete session" (stops it and forgets its spaces). Both
+  ask first.
+- A named session ends when its last space is closed, like a tmux session, and is deleted;
+  stock Herdr opens a fresh space instead. If its last shell was killed by a signal (say, at
+  logout), it stops but keeps its spaces. The default session keeps the stock behaviour.
+- A window showing its own session closes when that session is stopped, instead of waiting to
+  reconnect. Live updates still reconnect.
 
 ### agents
 

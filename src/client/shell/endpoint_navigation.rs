@@ -106,7 +106,7 @@ impl ClientShellState {
         outcome: &mut ClientShellInput,
     ) -> bool {
         use crate::input::KeybindAction;
-        if !self.multi_endpoint_active() {
+        if !self.lists_sessions() {
             return false;
         }
         if matches!(

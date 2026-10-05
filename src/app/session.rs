@@ -120,6 +120,12 @@ impl App {
         }
     }
 
+    /// Ours: a pane that died from a signal was saved just before removal and not yet saved
+    /// over.
+    pub(crate) fn pane_exit_checkpoint_pending(&self) -> bool {
+        self.pane_exit_checkpoint_pending
+    }
+
     pub(crate) fn save_session_on_shutdown(&mut self) {
         if self.pane_exit_checkpoint_pending && !self.state.session_dirty {
             self.session_save_deadline = None;

@@ -6,6 +6,7 @@ mod native_graphics;
 mod pane_move_tests;
 #[path = "pane_graphics.rs"]
 mod retained_graphics_tests;
+mod session_end;
 #[path = "surface_delta.rs"]
 mod surface_delta_tests;
 #[path = "surface_interest.rs"]
@@ -125,6 +126,12 @@ fn test_headless_server_with_event_hub(event_hub: api::EventHub) -> HeadlessServ
         headless_size,
         effective_size: headless_size,
         shutting_down: false,
+        session_end: super::session_end::SessionEnd {
+            named: false,
+            had_spaces: false,
+            ended: false,
+            keep_saved_state: false,
+        },
         host_shutdown_requested: Arc::new(AtomicBool::new(false)),
         handoff_in_progress: false,
         #[cfg(unix)]

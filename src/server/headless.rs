@@ -80,6 +80,7 @@ mod native_graphics;
 mod notifications;
 mod render;
 mod retained_surface;
+mod session_end;
 mod surface_interest;
 
 // Producers can refill even a bounded channel while it is being drained.
@@ -235,6 +236,7 @@ pub struct HeadlessServer {
     effective_size: (u16, u16),
     /// Flag set when shutdown is initiated.
     shutting_down: bool,
+    session_end: session_end::SessionEnd,
     /// Flag set while exporting live PTYs to a replacement server.
     handoff_in_progress: bool,
     /// Imported panes get one app-safe resize nudge after the first client attaches.
@@ -367,6 +369,7 @@ impl HeadlessServer {
             headless_size,
             effective_size: headless_size,
             shutting_down: false,
+            session_end: session_end::SessionEnd::for_active_session(),
             host_shutdown_requested: Arc::new(AtomicBool::new(false)),
             handoff_in_progress: false,
             #[cfg(unix)]
@@ -496,6 +499,9 @@ impl HeadlessServer {
                 needs_graphics_render = false;
             }
 
+            if self.end_session_after_last_space() {
+                continue;
+            }
             if latest_shell_client(&self.clients).is_some() && self.app.ensure_default_workspace() {
                 needs_render = true;
                 needs_full_render = true;
@@ -1887,7 +1893,9 @@ impl HeadlessServer {
                     render_encoding = ?protocol::RenderEncoding::SemanticFrame,
                     "client connected"
                 );
-                self.app.ensure_default_workspace();
+                if !self.end_session_after_last_space() {
+                    self.app.ensure_default_workspace();
+                }
                 let first_app_client = self.app_client_count() == 0;
                 let last_activity = self.allocate_activity_stamp();
                 let observed = crate::kitty_graphics::HostCellSize {
@@ -3184,7 +3192,10 @@ impl HeadlessServer {
             }
         }
 
-        if !skip_default_workspace && latest_shell_client(&self.clients).is_some() {
+        if !skip_default_workspace
+            && !self.end_session_after_last_space()
+            && latest_shell_client(&self.clients).is_some()
+        {
             changed |= self.app.ensure_default_workspace();
         }
 

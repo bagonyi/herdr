@@ -32,6 +32,7 @@ mod preferences;
 mod render;
 mod row_hover;
 mod scroll;
+mod session_create;
 mod settings;
 mod state;
 mod surface_patch;
@@ -42,6 +43,7 @@ use text_editor::TextEditor;
 use word_selection::ClientWordSelection;
 
 pub(in crate::client::shell) use render::sidebar;
+pub(super) use session_create::{spawn_session_server, spawn_session_stop};
 pub(crate) use state::*;
 #[cfg(test)]
 pub(super) use surface_patch::apply_composed_surface_patch;

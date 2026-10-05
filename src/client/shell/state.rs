@@ -104,6 +104,8 @@ pub(super) struct ShellHitMap {
     pub(super) sidebar_section_divider: Rect,
     pub(super) sidebar_toggle: Rect,
     pub(super) new_workspace: Rect,
+    pub(super) new_session: Rect,
+    pub(super) new_session_workspace: Vec<(Rect, ClientEndpointId)>,
     pub(super) new_tab: Rect,
     pub(super) tab_scroll_left: Rect,
     pub(super) tab_scroll_right: Rect,
@@ -254,6 +256,13 @@ pub(crate) enum ClientShellAction {
     },
     ReplayMouse(Vec<crossterm::event::MouseEvent>),
     Keybind(crate::input::KeybindAction),
+    StartSession {
+        name: String,
+    },
+    StopSession {
+        name: String,
+        delete: bool,
+    },
 }
 
 #[derive(Default)]
@@ -315,6 +324,7 @@ pub(super) enum ClientRenameTarget {
     Pane {
         pane_id: String,
     },
+    Session(super::session_create::SessionPrompt),
 }
 
 #[derive(Debug)]
@@ -525,6 +535,8 @@ pub(super) enum ClientContextMenuAction {
     Zoom,
     ToggleRightClickPassthrough,
     ClosePane,
+    StopSession,
+    DeleteSession,
 }
 
 #[derive(Debug)]
@@ -546,6 +558,10 @@ pub(super) enum ClientContextMenuTarget {
         source_pane_id: Option<String>,
         has_manual_label: bool,
         right_click_passthrough: bool,
+    },
+    Session {
+        endpoint_id: ClientEndpointId,
+        name: String,
     },
 }
 
@@ -574,6 +590,7 @@ pub(super) struct ClientConfirmCloseOverlay {
     pub(super) tab_target: Option<ClientTabCloseConfirmation>,
     pub(super) title: String,
     pub(super) detail: String,
+    pub(super) session: Option<super::session_create::SessionStop>,
 }
 
 #[derive(Debug)]
@@ -896,6 +913,7 @@ pub(crate) struct ClientShellState {
     pub(super) pane_mouse_gesture: Option<ClientPaneMouseGesture>,
     pub(super) link_hover: Option<super::link_hover::LinkHover>,
     pub(super) row_hover: Option<(u16, u16)>,
+    pub(super) session_create: super::session_create::SessionCreate,
     pub(super) url_click_consumes_until_up: bool,
     pub(super) replaying_url_click: bool,
     pub(super) selection: Option<crate::selection::Selection<String>>,
@@ -1063,6 +1081,7 @@ impl ClientShellState {
             pane_mouse_gesture: None,
             link_hover: None,
             row_hover: None,
+            session_create: Default::default(),
             url_click_consumes_until_up: false,
             replaying_url_click: false,
             selection: None,

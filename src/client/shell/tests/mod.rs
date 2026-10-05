@@ -260,4 +260,5 @@ mod mobile;
 mod mouse_selection;
 mod popup_focus_projection;
 mod row_hover;
+mod session_create;
 mod startup_overlays;

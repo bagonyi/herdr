@@ -426,7 +426,7 @@ pub(crate) fn is_local_session_profile(profile_id: &str, target: &str, session: 
 }
 
 /// Derived from the session name, so selection and collapse state survive restarts.
-fn local_session_profile_id(session: &str) -> ProfileId {
+pub(crate) fn local_session_profile_id(session: &str) -> ProfileId {
     use sha2::{Digest as _, Sha256};
     let digest = Sha256::digest(format!("herdr-local-session:{session}").as_bytes());
     ProfileId(
