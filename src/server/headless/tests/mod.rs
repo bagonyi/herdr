@@ -7309,6 +7309,100 @@ fn completion_guard_api_report(server: &mut HeadlessServer, method: api::schema:
     serde_json::from_str::<api::schema::SuccessResponse>(&response).expect("successful report");
 }
 
+fn report_test_agent_state(
+    server: &mut HeadlessServer,
+    public_pane_id: &str,
+    seq: u64,
+    state: api::schema::PaneAgentState,
+) {
+    completion_guard_api_report(
+        server,
+        api::schema::Method::PaneReportAgent(api::schema::PaneReportAgentParams {
+            pane_id: public_pane_id.into(),
+            source: "test-agent".into(),
+            agent: "test-agent".into(),
+            state,
+            message: None,
+            seq: Some(seq),
+            agent_session_id: None,
+            agent_session_path: None,
+            resume_argv: None,
+        }),
+    );
+}
+
+#[test]
+fn agent_finishing_in_active_tab_without_a_window_stays_unseen() {
+    let mut server = test_headless_server();
+    server.app.state.workspaces = vec![crate::workspace::Workspace::test_new("only")];
+    server.app.state.ensure_test_terminals();
+    server.app.state.active = Some(0);
+    server.sync_foreground_client_state();
+    let pane_id = server.app.state.workspaces[0].tabs[0].root_pane;
+    let public_pane_id = server.app.public_pane_id(0, pane_id).unwrap();
+
+    report_test_agent_state(
+        &mut server,
+        &public_pane_id,
+        1,
+        api::schema::PaneAgentState::Working,
+    );
+    report_test_agent_state(
+        &mut server,
+        &public_pane_id,
+        2,
+        api::schema::PaneAgentState::Idle,
+    );
+
+    assert!(!server.app.state.workspaces[0].panes[&pane_id].seen);
+}
+
+#[test]
+fn focused_window_seeing_finished_agents_emits_focus_events() {
+    let event_hub = api::EventHub::default();
+    let mut server = test_headless_server_with_event_hub(event_hub.clone());
+    server.app.state.workspaces = vec![crate::workspace::Workspace::test_new("only")];
+    server.app.state.ensure_test_terminals();
+    server.app.state.active = Some(0);
+    let pane_id = server.app.state.workspaces[0].tabs[0].root_pane;
+    server.app.state.workspaces[0]
+        .panes
+        .get_mut(&pane_id)
+        .unwrap()
+        .seen = false;
+    let mut client = ClientConnection::new(
+        (80, 24),
+        Default::default(),
+        1,
+        RenderEncoding::SemanticFrame,
+        None,
+    );
+    client.outer_terminal_focus = Some(true);
+    server.clients.insert(1, client);
+    server.foreground_client_id = Some(1);
+    let focus_events = || {
+        event_hub
+            .events_after(0)
+            .into_iter()
+            .map(|(_, event)| event.event)
+            .collect::<Vec<_>>()
+    };
+
+    server.sync_foreground_client_state();
+    assert!(server.app.state.workspaces[0].panes[&pane_id].seen);
+    assert_eq!(
+        focus_events(),
+        [
+            api::schema::EventKind::WorkspaceFocused,
+            api::schema::EventKind::TabFocused,
+            api::schema::EventKind::PaneFocused,
+        ]
+    );
+
+    server.sync_foreground_client_state();
+    assert_eq!(focus_events().len(), 3, "nothing newly seen to announce");
+}
+
 #[test]
 fn api_report_agent_stores_valid_resume_argv_and_rejects_invalid() {
     let (writer, _control_rx, _render_rx) = test_client_writer();

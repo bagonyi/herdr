@@ -37,6 +37,10 @@ fn lifecycle_resize() -> crate::protocol::ClientMessage {
 }
 
 fn request_active_surface(server: &mut HeadlessServer, client_id: u64, request_id: &str) {
+    request_surface(server, client_id, request_id, true);
+}
+
+fn request_surface(server: &mut HeadlessServer, client_id: u64, request_id: &str, active: bool) {
     let boot_id = server.client_shell_boot_id.clone();
     assert!(
         server.handle_server_event(ServerEvent::ClientShellEndpointRequest {
@@ -45,7 +49,7 @@ fn request_active_surface(server: &mut HeadlessServer, client_id: u64, request_i
             request: Box::new(api::schema::Request {
                 id: request_id.into(),
                 method: api::schema::Method::ClientShellSurfaceSet(
-                    api::schema::ClientShellSurfaceSetParams { active: true },
+                    api::schema::ClientShellSurfaceSetParams { active },
                 ),
             }),
         })
@@ -865,4 +869,65 @@ async fn two_headless_servers_drive_atomic_endpoint_handoff() {
     );
     shutdown_test_runtimes(&mut source_server);
     shutdown_test_runtimes(&mut target_server);
+}
+
+fn connect_shell_window(server: &mut HeadlessServer, client_id: u64, surface_active: bool) {
+    let (writer, _control_rx, _render_rx) = test_client_writer();
+    assert!(
+        server.handle_server_event(ServerEvent::ClientShellConnected {
+            surface_reuse: false,
+            surface_delta: false,
+            surface_scroll: false,
+            client_id,
+            surface_cols: 80,
+            surface_rows: 24,
+            cell_width_px: 8,
+            cell_height_px: 16,
+            pixel_mouse: false,
+            direct_graphics: false,
+            endpoint_keybindings: true,
+            mouse_capture: true,
+            surface_active,
+            writer,
+        })
+    );
+}
+
+#[tokio::test]
+async fn window_switching_to_another_session_leaves_later_completions_unseen() {
+    let mut server = test_headless_server();
+    server.app.state.workspaces = vec![crate::workspace::Workspace::test_new("only")];
+    server.app.state.ensure_test_terminals();
+    server.app.state.active = Some(0);
+    let pane_id = server.app.state.workspaces[0].tabs[0].root_pane;
+    let public_pane_id = server.app.public_pane_id(0, pane_id).unwrap();
+    connect_shell_window(&mut server, 52, true);
+    assert!(server.handle_server_event(ServerEvent::ClientShellFocus {
+        client_id: 52,
+        focused: true,
+    }));
+    assert_eq!(server.app.state.outer_terminal_focus, Some(true));
+
+    // The window moves to another session: it revokes focus, then releases this surface.
+    assert!(server.handle_server_event(ServerEvent::ClientShellFocus {
+        client_id: 52,
+        focused: false,
+    }));
+    request_surface(&mut server, 52, "surface-off", false);
+    assert_eq!(server.foreground_client_id, None);
+    assert_eq!(server.app.state.outer_terminal_focus, Some(false));
+
+    report_test_agent_state(
+        &mut server,
+        &public_pane_id,
+        1,
+        api::schema::PaneAgentState::Working,
+    );
+    report_test_agent_state(
+        &mut server,
+        &public_pane_id,
+        2,
+        api::schema::PaneAgentState::Idle,
+    );
+    assert!(!server.app.state.workspaces[0].panes[&pane_id].seen);
 }

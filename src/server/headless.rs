@@ -767,7 +767,8 @@ impl HeadlessServer {
         });
         let Some(client_id) = self.foreground_client_id else {
             self.effective_size = self.headless_size;
-            self.app.state.outer_terminal_focus = None;
+            // No window shows this session, so nobody is looking at its active tab.
+            self.app.state.outer_terminal_focus = Some(false);
             self.app.state.host_cell_size = crate::kitty_graphics::HostCellSize::default();
             self.sync_runtime_view_geometry();
             let server_keybindings = self.server_keybindings.clone();
@@ -778,7 +779,8 @@ impl HeadlessServer {
         let Some(client) = self.clients.get(&client_id) else {
             self.foreground_client_id = None;
             self.effective_size = self.headless_size;
-            self.app.state.outer_terminal_focus = None;
+            // No window shows this session, so nobody is looking at its active tab.
+            self.app.state.outer_terminal_focus = Some(false);
             self.app.state.host_cell_size = crate::kitty_graphics::HostCellSize::default();
             self.sync_runtime_view_geometry();
             let server_keybindings = self.server_keybindings.clone();
@@ -806,14 +808,26 @@ impl HeadlessServer {
         let server_keybindings = self.server_keybindings.clone();
         apply_keybindings(&mut self.app, &server_keybindings);
         self.sync_visible_server_config_diagnostic(false);
-        if outer_terminal_focus == Some(true) {
-            self.app.state.mark_active_tab_seen();
+        if outer_terminal_focus == Some(true) && self.app.state.mark_active_tab_seen() {
+            // Agents that finished while the window was away are seen now. Announce it the way
+            // switching to the tab would, so plugins tracking unseen agents catch up.
+            self.emit_active_focus_events();
         }
         self.app.set_host_terminal_appearance_state(
             host_terminal_appearance,
             host_terminal_appearance_explicit,
         );
         self.app.set_host_terminal_theme(host_terminal_theme);
+    }
+
+    fn emit_active_focus_events(&mut self) {
+        let focus = self.app.state.active.and_then(|ws_idx| {
+            let pane_id = self.app.state.workspaces.get(ws_idx)?.focused_pane_id()?;
+            Some((ws_idx, pane_id))
+        });
+        if let Some((ws_idx, pane_id)) = focus {
+            self.app.emit_focus_api_events(ws_idx, pane_id);
+        }
     }
 
     fn sync_visible_server_config_diagnostic(&mut self, uses_local_keybindings: bool) {
