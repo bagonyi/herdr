@@ -62,6 +62,9 @@ markers in the tab bar come from a separate Herdr plugin,
   even in the tab you last had open there. Stock Herdr counts that tab as looked at. Switching to
   another space in that session doesn't count either.
 - The agents panel can be hidden, giving the spaces list the whole sidebar.
+- Notifications leave out the 🟢 ⏳ 🟠 marker that [Tab Status](https://github.com/bagonyi/herdr-tab-status)
+  puts in front of a tab's name. The plugin changes it only after the notification is made, so a
+  "finished" notification would still show ⏳.
 
 ### mouse
 

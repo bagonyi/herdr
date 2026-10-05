@@ -146,6 +146,18 @@ fn sound_for_toast_kind(
     }
 }
 
+/// Status markers the Tab Status plugin puts in front of tab names. A
+/// notification already names the status, and the plugin swaps the marker only
+/// after the notification is made, so it would show the old one.
+const TAB_STATUS_MARKERS: [&str; 3] = ["🟢 ", "⏳ ", "🟠 "];
+
+fn strip_tab_status_marker(label: &str) -> &str {
+    TAB_STATUS_MARKERS
+        .iter()
+        .find_map(|marker| label.strip_prefix(marker))
+        .unwrap_or(label)
+}
+
 pub fn notification_context(
     ws: &crate::workspace::Workspace,
     workspace_label: &str,
@@ -156,6 +168,7 @@ pub fn notification_context(
     if ws.tabs.len() > 1 {
         if let Some(tab_idx) = ws.find_tab_index_for_pane(pane_id) {
             if let Some(label) = ws.tab_display_name(tab_idx) {
+                let label = strip_tab_status_marker(&label);
                 context.push_str(&format!(" · {label}"));
             }
         }
@@ -2141,6 +2154,25 @@ mod tests {
         assert_eq!(
             notification_context(&state.workspaces[0], "__herdr_projects__", 0, root),
             "__herdr_projects__ · 1"
+        );
+    }
+
+    #[test]
+    fn notification_context_leaves_out_tab_status_marker() {
+        let mut state = app_with_workspaces(&["workflow"]);
+        let ws = &mut state.workspaces[0];
+        let marked = ws.test_add_tab(Some("⏳ orchestrator"));
+        let unmarked = ws.test_add_tab(Some("🚀 deploy"));
+        let pane = ws.tabs[marked].root_pane;
+        let other = ws.tabs[unmarked].root_pane;
+
+        assert_eq!(
+            notification_context(&state.workspaces[0], "workflow", 0, pane),
+            "workflow · 1 · orchestrator"
+        );
+        assert_eq!(
+            notification_context(&state.workspaces[0], "workflow", 0, other),
+            "workflow · 1 · 🚀 deploy"
         );
     }
 
