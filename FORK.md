@@ -52,6 +52,15 @@ markers in the tab bar come from a separate Herdr plugin,
 - A window showing its own session closes when that session is stopped, instead of waiting to
   reconnect. Live updates still reconnect.
 
+### starting and stopping every session
+
+- `herdr session stop --all` stops every running session at once. When run inside one of them,
+  that session stops last.
+- Plain `herdr` starts every saved session that isn't running, then opens the one you used last
+  (or the first in the sidebar). It starts the default session only when no named session is
+  saved. So after `herdr session stop --all`, or a restart of the computer, plain `herdr` brings
+  everything back, and after detaching it reopens the session you were in.
+
 ### agents
 
 - Each space shows a red count of agents waiting for you (finished and not yet looked at, or

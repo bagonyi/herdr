@@ -787,6 +787,7 @@ fn main() -> io::Result<()> {
 
     let loaded_config = config::Config::load();
     exit_if_nested_disabled(&loaded_config.config);
+    client::saved_sessions::prepare_launch(&loaded_config.config.ui.sidebar.spaces.machine_order);
 
     let saved_federation =
         client::endpoint::EndpointCatalog::load().is_ok_and(|catalog| catalog.has_enabled_ssh());

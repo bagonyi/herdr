@@ -31,6 +31,7 @@ mod image_files;
 mod input;
 mod loop_config;
 mod notifications;
+pub(crate) mod saved_sessions;
 mod shell;
 mod shell_runtime;
 mod startup;
@@ -1368,6 +1369,7 @@ async fn run_client_loop(
                 if let Err(error) = endpoint_catalog.store_selection() {
                     warn!(%error, "failed to persist desired endpoint selection");
                 }
+                saved_sessions::remember_endpoint(&endpoint_catalog, &endpoint_id);
                 begin_endpoint_activation(
                     &mut state,
                     &mut write_stream,

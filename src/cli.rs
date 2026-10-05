@@ -474,6 +474,13 @@ fn session_list(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn session_stop(args: &[String]) -> std::io::Result<i32> {
+    if args.first().map(String::as_str) == Some("--all") {
+        if args.len() > 1 {
+            eprintln!("usage: herdr session stop --all");
+            return Ok(2);
+        }
+        return crate::client::saved_sessions::stop_all();
+    }
     let (name, json) =
         match parse_session_name_and_json(args, "usage: herdr session stop <name> [--json]") {
             Ok(parsed) => parsed,
@@ -1043,6 +1050,7 @@ fn print_session_help() {
     eprintln!("  herdr session list [--json]");
     eprintln!("  herdr session attach <name>");
     eprintln!("  herdr session stop <name> [--json]");
+    eprintln!("  herdr session stop --all");
     eprintln!("  herdr session delete <name> [--json]");
     eprintln!("  use 'default' as <name> to target the default session for stop");
 }

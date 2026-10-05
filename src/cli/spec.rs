@@ -749,9 +749,12 @@ fn session_command() -> Command {
         )
         .subcommand(
             Command::new("stop")
-                .about("Stop a session")
-                .arg(required("name", "NAME"))
-                .arg(json_flag()),
+                .about("Stop a session, or every running session with --all")
+                .override_usage("herdr session stop <NAME> [--json] | --all")
+                .arg(Arg::new("name").value_name("NAME"))
+                .arg(json_flag().conflicts_with("all"))
+                .arg(flag("all").help("Stop every running session"))
+                .group(ArgGroup::new("stop").args(["name", "all"]).required(true)),
         )
         .subcommand(
             Command::new("delete")
