@@ -50,12 +50,21 @@ impl EndpointAgentPresentation {
             self.acknowledged.clear();
             self.completed.clear();
             self.working.clear();
-            self.acknowledged.extend(
-                snapshot
-                    .agents
-                    .iter()
-                    .map(|agent| (agent.pane_id.clone(), agent.state_change_seq)),
-            );
+            // What happened before this window was watching is the server's call: agents it
+            // still reports done, and open questions, wait until their pane is on screen.
+            for agent in &snapshot.agents {
+                match agent.agent_status {
+                    AgentStatus::Done => {
+                        self.completed
+                            .insert(agent.pane_id.clone(), agent.state_change_seq);
+                    }
+                    AgentStatus::Blocked => {}
+                    _ => {
+                        self.acknowledged
+                            .insert(agent.pane_id.clone(), agent.state_change_seq);
+                    }
+                }
+            }
         }
         let pane_ids: HashSet<&str> = snapshot
             .agents
@@ -159,31 +168,6 @@ impl EndpointAgentPresentation {
                 .get(&agent.pane_id)
                 .is_some_and(|sequence| sequence >= completion)
         })
-    }
-
-    pub(super) fn boot_id(&self) -> Option<&str> {
-        self.boot_id.as_deref()
-    }
-
-    /// What a reattached window needs to know which agents it has already seen.
-    pub(super) fn saved_seen(&self) -> super::agent_seen::SavedAgentSeen {
-        super::agent_seen::SavedAgentSeen {
-            acknowledged: self.acknowledged.clone(),
-            completed: self.completed.clone(),
-            working: self.working.clone(),
-        }
-    }
-
-    /// Continues from what this window saw of the same server boot before it detached.
-    pub(super) fn restore_seen(
-        &mut self,
-        boot_id: String,
-        saved: super::agent_seen::SavedAgentSeen,
-    ) {
-        self.boot_id = Some(boot_id);
-        self.acknowledged = saved.acknowledged;
-        self.completed = saved.completed;
-        self.working = saved.working;
     }
 
     /// Finished or asking a question, and its pane has not been on screen since.
@@ -311,13 +295,26 @@ mod tests {
     }
 
     #[test]
-    fn first_snapshot_establishes_an_idle_baseline_without_server_seen_authority() {
+    fn first_snapshot_keeps_what_the_server_reports_done() {
         let mut presentation = EndpointAgentPresentation::default();
         let mut snapshot = snapshot(AgentStatus::Done, 4, 1);
 
         presentation.project_snapshot(&mut snapshot);
 
+        assert_eq!(snapshot.agents[0].agent_status, AgentStatus::Done);
+        assert!(presentation.awaits_user(&snapshot.agents[0]));
+    }
+
+    #[test]
+    fn first_snapshot_takes_idle_agents_as_seen() {
+        let mut presentation = EndpointAgentPresentation::default();
+        presentation.receive_completions(None, completions("endpoint-boot", 1, Some(4)));
+        let mut snapshot = snapshot(AgentStatus::Idle, 4, 1);
+
+        presentation.project_snapshot(&mut snapshot);
+
         assert_eq!(snapshot.agents[0].agent_status, AgentStatus::Idle);
+        assert!(!presentation.awaits_user(&snapshot.agents[0]));
     }
 
     fn assert_idle_sequence(states: &[(AgentStatus, u64)]) {
@@ -519,9 +516,11 @@ mod tests {
         let mut baseline = snapshot(AgentStatus::Blocked, 4, 1);
         presentation.project_snapshot(&mut baseline);
         assert!(
-            !presentation.awaits_user(&baseline.agents[0]),
-            "a question already open when the client connects counts as seen"
+            presentation.awaits_user(&baseline.agents[0]),
+            "a question already open when the window opens waits for the user too"
         );
+        presentation.acknowledge_surface(&mut baseline, &surface(1), Some(true));
+        assert!(!presentation.awaits_user(&baseline.agents[0]));
 
         let mut asking = snapshot(AgentStatus::Blocked, 5, 2);
         presentation.project_snapshot(&mut asking);
@@ -538,41 +537,5 @@ mod tests {
         assert!(presentation.awaits_user(&finished.agents[0]));
         presentation.acknowledge_surface(&mut finished, &surface(4), Some(true));
         assert!(!presentation.awaits_user(&finished.agents[0]));
-    }
-
-    #[test]
-    fn a_restored_window_keeps_what_it_had_not_seen() {
-        let mut before = EndpointAgentPresentation::default();
-        let mut baseline = snapshot(AgentStatus::Working, 4, 1);
-        before.project_snapshot(&mut baseline);
-        let mut asking = snapshot(AgentStatus::Blocked, 5, 2);
-        before.project_snapshot(&mut asking);
-        assert!(before.awaits_user(&asking.agents[0]));
-
-        let mut fresh = EndpointAgentPresentation::default();
-        let mut first = snapshot(AgentStatus::Blocked, 5, 7);
-        fresh.project_snapshot(&mut first);
-        assert!(
-            !fresh.awaits_user(&first.agents[0]),
-            "without a saved record, waiting agents count as seen"
-        );
-
-        let mut restored = EndpointAgentPresentation::default();
-        restored.restore_seen("endpoint-boot".into(), before.saved_seen());
-        let mut reattached = snapshot(AgentStatus::Blocked, 5, 7);
-        restored.project_snapshot(&mut reattached);
-        assert!(restored.awaits_user(&reattached.agents[0]));
-
-        let mut working = snapshot(AgentStatus::Working, 6, 8);
-        before.project_snapshot(&mut working);
-        let mut restored = EndpointAgentPresentation::default();
-        restored.restore_seen("endpoint-boot".into(), before.saved_seen());
-        let mut finished_while_detached = snapshot(AgentStatus::Idle, 7, 9);
-        restored.project_snapshot(&mut finished_while_detached);
-        assert_eq!(
-            finished_while_detached.agents[0].agent_status,
-            AgentStatus::Done
-        );
-        assert!(restored.awaits_user(&finished_while_detached.agents[0]));
     }
 }

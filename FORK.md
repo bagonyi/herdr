@@ -56,8 +56,8 @@ markers in the tab bar come from a separate Herdr plugin,
 
 - Each space shows a red count of agents waiting for you (finished and not yet looked at, or
   blocked), like an app badge.
-- A window remembers which agents it has already seen when you detach and reattach, so those
-  counts don't reset.
+- A window you open counts agents that finished while no window was looking, and any open
+  questions, so closing and reopening it doesn't reset the counts.
 - An agent that finishes in a session no window is showing counts as unseen until you look at it,
   even in the tab you last had open there. Stock Herdr counts that tab as looked at. Switching to
   another space in that session doesn't count either.

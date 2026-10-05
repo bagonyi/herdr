@@ -2701,45 +2701,38 @@ fn single_session_spaces_show_the_count_too() {
 }
 
 #[test]
-fn a_reattached_window_keeps_its_counts() {
-    let path =
-        std::env::temp_dir().join(format!("herdr-reattach-counts-{}.json", std::process::id()));
-    let seen_path = path.with_extension("seen.json");
-    let _ = std::fs::remove_file(&seen_path);
-    let window = || {
-        let mut state = ClientShellState::new(
-            ClientShellConfig::from_config(&Config::default()).with_preferences_path(path.clone()),
-        );
-        state.set_snapshot(Box::new(snapshot()));
-        state.set_pane_surface(surface());
-        state
-    };
-    let mut asking = snapshot();
-    asking.revision = 2;
-    asking.agents = vec![ClientShellAgent {
-        pane_id: "pane_9".into(),
-        ..agent("asking", AgentStatus::Blocked, 2)
-    }];
-    let count_badge = |state: &mut ClientShellState| {
-        state.set_snapshot(Box::new(asking.clone()));
-        state.set_pane_surface(PaneSurfaceFrame {
-            projection_revision: 2,
-            ..surface()
-        });
-        let frame = state.compose(100, 28).unwrap();
-        count_badge_bg(&frame, state.hits.workspaces[0].rect)
-    };
+fn a_new_window_counts_what_the_server_still_reports_unseen() {
     let red = Some(crate::protocol::color_to_u32(
         ClientShellConfig::from_config(&Config::default())
             .palette
             .red,
     ));
+    let new_window_badge = |status| {
+        let mut first = snapshot();
+        first.agents = vec![ClientShellAgent {
+            pane_id: "pane_9".into(),
+            ..agent("waiting", status, 2)
+        }];
+        let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+        state.set_snapshot(Box::new(first));
+        state.set_pane_surface(surface());
+        let frame = state.compose(100, 28).unwrap();
+        count_badge_bg(&frame, state.hits.workspaces[0].rect)
+    };
 
-    assert_eq!(count_badge(&mut window()), red);
     assert_eq!(
-        count_badge(&mut window()),
+        new_window_badge(AgentStatus::Done),
         red,
-        "a new window on the same server boot still counts the unseen question"
+        "it finished while no window was looking"
     );
-    std::fs::remove_file(seen_path).expect("remove saved seen state");
+    assert_eq!(
+        new_window_badge(AgentStatus::Blocked),
+        red,
+        "its question is still open"
+    );
+    assert_ne!(
+        new_window_badge(AgentStatus::Idle),
+        red,
+        "the server says it has been seen"
+    );
 }

@@ -620,12 +620,6 @@ impl ClientShellState {
         if boot_changed {
             self.retire_endpoint_notifications(endpoint_id);
         }
-        self.restore_agent_seen(index, &snapshot.boot_id);
-        let presentation = &self.endpoints[index].agent_presentation;
-        let seen_before = (
-            presentation.boot_id().map(str::to_owned),
-            presentation.saved_seen(),
-        );
         self.endpoints[index]
             .agent_presentation
             .project_snapshot_for_generation(&mut snapshot, generation);
@@ -638,14 +632,6 @@ impl ClientShellState {
             self.endpoints[index]
                 .agent_presentation
                 .acknowledge_surface(&mut snapshot, surface, self.outer_focused);
-        }
-        let presentation = &self.endpoints[index].agent_presentation;
-        if (
-            presentation.boot_id().map(str::to_owned),
-            presentation.saved_seen(),
-        ) != seen_before
-        {
-            self.persist_agent_seen();
         }
         let previous = self.endpoints[index].snapshot.as_deref();
         let mut next_recency = self
@@ -732,7 +718,6 @@ impl ClientShellState {
         };
         if changed {
             self.snapshot = self.endpoints[index].snapshot.clone();
-            self.persist_agent_seen();
         }
         changed
     }
