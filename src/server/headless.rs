@@ -800,6 +800,9 @@ impl HeadlessServer {
         let host_terminal_appearance = client.host_terminal_appearance;
         let host_terminal_appearance_explicit = client.host_terminal_appearance_explicit;
         let outer_terminal_focus = client.outer_terminal_focus;
+        let presentation_pending = client
+            .shell_presentation_pending_until
+            .is_some_and(|until| std::time::Instant::now() < until);
 
         self.effective_size = terminal_size;
         self.sync_runtime_view_geometry();
@@ -808,7 +811,12 @@ impl HeadlessServer {
         let server_keybindings = self.server_keybindings.clone();
         apply_keybindings(&mut self.app, &server_keybindings);
         self.sync_visible_server_config_diagnostic(false);
-        if outer_terminal_focus == Some(true) && self.app.state.mark_active_tab_seen() {
+        // A window still switching to this session may yet land on another tab; it marks the
+        // tab it lands on seen once it presents it (see `mark_presented_tab_seen`).
+        if outer_terminal_focus == Some(true)
+            && !presentation_pending
+            && self.app.state.mark_active_tab_seen()
+        {
             // Agents that finished while the window was away are seen now. Announce it the way
             // switching to the tab would, so plugins tracking unseen agents catch up.
             self.emit_active_focus_events();
@@ -818,6 +826,21 @@ impl HeadlessServer {
             host_terminal_appearance_explicit,
         );
         self.app.set_host_terminal_theme(host_terminal_theme);
+    }
+
+    /// A window that switched to this session now shows it, on whichever tab it navigated to.
+    fn mark_presented_tab_seen(&mut self, client_id: u64) {
+        let focused = self.foreground_client_id == Some(client_id)
+            && self
+                .clients
+                .get(&client_id)
+                .is_some_and(|client| client.outer_terminal_focus == Some(true));
+        if focused {
+            self.app.state.mark_active_tab_seen();
+            // Announce it even if navigation already marked the tab seen: landing on the
+            // session's current tab does that without any event.
+            self.emit_active_focus_events();
+        }
     }
 
     fn emit_active_focus_events(&mut self) {
@@ -2319,10 +2342,12 @@ impl HeadlessServer {
                 client.host_mouse_capture_active = None;
                 client.host_sgr_pixels_active = None;
                 client.host_keyboard_report_all_active = None;
+                client.shell_presentation_pending_until = None;
                 self.sent_window_title = None;
                 self.stream_host_mouse_capture_mode();
                 self.stream_direct_terminal_keyboard_mode();
                 self.sync_window_title();
+                self.mark_presented_tab_seen(client_id);
                 self.send_to_client(
                     client_id,
                     ServerMessage::EndpointControl {

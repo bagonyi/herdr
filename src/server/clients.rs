@@ -161,6 +161,10 @@ pub(crate) struct ClientConnection {
     pub(crate) render_pending: bool,
     /// Whether this connection receives pane surfaces and may affect presentation state.
     pub(crate) shell_surface_active: bool,
+    /// Set when a window activates this surface and cleared once it confirms it shows the
+    /// session. Until then its focus marks nothing seen: the window may still move to another
+    /// tab than the one active here.
+    pub(crate) shell_presentation_pending_until: Option<std::time::Instant>,
     /// Whether this shell wants host mouse capture without pane demand.
     pub(crate) shell_mouse_capture: bool,
     /// Last host mouse capture mode sent to this client.
@@ -239,6 +243,7 @@ impl ClientConnection {
             host_keyboard_report_all_active: None,
             render_pending: false,
             shell_surface_active: true,
+            shell_presentation_pending_until: None,
             shell_mouse_capture: false,
             host_mouse_capture_active: None,
             host_sgr_pixels_active: None,

@@ -59,7 +59,8 @@ markers in the tab bar come from a separate Herdr plugin,
 - A window remembers which agents it has already seen when you detach and reattach, so those
   counts don't reset.
 - An agent that finishes in a session no window is showing counts as unseen until you look at it,
-  even in the tab you last had open there. Stock Herdr counts that tab as looked at.
+  even in the tab you last had open there. Stock Herdr counts that tab as looked at. Switching to
+  another space in that session doesn't count either.
 - The agents panel can be hidden, giving the spaces list the whole sidebar.
 
 ### mouse

@@ -871,8 +871,19 @@ async fn two_headless_servers_drive_atomic_endpoint_handoff() {
     shutdown_test_runtimes(&mut target_server);
 }
 
-fn connect_shell_window(server: &mut HeadlessServer, client_id: u64, surface_active: bool) {
-    let (writer, _control_rx, _render_rx) = test_client_writer();
+/// A window's control and render channels, which must stay open while it is connected.
+type ShellWindowChannels = (
+    std::sync::mpsc::Receiver<Vec<u8>>,
+    std::sync::mpsc::Receiver<Vec<u8>>,
+);
+
+/// Connects a window and returns its channels.
+fn connect_shell_window(
+    server: &mut HeadlessServer,
+    client_id: u64,
+    surface_active: bool,
+) -> ShellWindowChannels {
+    let (writer, control_rx, render_rx) = test_client_writer();
     assert!(
         server.handle_server_event(ServerEvent::ClientShellConnected {
             surface_reuse: false,
@@ -891,6 +902,7 @@ fn connect_shell_window(server: &mut HeadlessServer, client_id: u64, surface_act
             writer,
         })
     );
+    (control_rx, render_rx)
 }
 
 #[tokio::test]
@@ -901,7 +913,7 @@ async fn window_switching_to_another_session_leaves_later_completions_unseen() {
     server.app.state.active = Some(0);
     let pane_id = server.app.state.workspaces[0].tabs[0].root_pane;
     let public_pane_id = server.app.public_pane_id(0, pane_id).unwrap();
-    connect_shell_window(&mut server, 52, true);
+    let _window = connect_shell_window(&mut server, 52, true);
     assert!(server.handle_server_event(ServerEvent::ClientShellFocus {
         client_id: 52,
         focused: true,
@@ -930,4 +942,120 @@ async fn window_switching_to_another_session_leaves_later_completions_unseen() {
         api::schema::PaneAgentState::Idle,
     );
     assert!(!server.app.state.workspaces[0].panes[&pane_id].seen);
+}
+
+/// A server whose current space's tab has an agent that finished while no window showed it,
+/// and a window that has just switched its surface on (still waiting to present it).
+fn switching_window_server(
+    event_hub: api::EventHub,
+) -> (HeadlessServer, crate::layout::PaneId, ShellWindowChannels) {
+    let mut server = test_headless_server_with_event_hub(event_hub);
+    server.app.state.workspaces = ["current", "other"]
+        .map(crate::workspace::Workspace::test_new)
+        .into();
+    server.app.state.ensure_test_terminals();
+    server.app.state.active = Some(0);
+    let pane_id = server.app.state.workspaces[0].tabs[0].root_pane;
+    server.app.state.workspaces[0]
+        .panes
+        .get_mut(&pane_id)
+        .unwrap()
+        .seen = false;
+    let window = connect_shell_window(&mut server, 52, false);
+    // The order a window switching to this session sends: surface on, then focus baseline.
+    request_active_surface(&mut server, 52, "surface-on");
+    assert!(server.handle_server_event(ServerEvent::ClientShellFocus {
+        client_id: 52,
+        focused: true,
+    }));
+    (server, pane_id, window)
+}
+
+fn present_shell_window(server: &mut HeadlessServer, client_id: u64) {
+    assert!(
+        server.handle_server_event(ServerEvent::ClientShellPresentationSync {
+            client_id,
+            token: "presented".into(),
+        })
+    );
+}
+
+fn focus_workspace(server: &mut HeadlessServer, client_id: u64, ws_idx: usize) {
+    let boot_id = server.client_shell_boot_id.clone();
+    let workspace_id = server.app.public_workspace_id(ws_idx);
+    server.handle_server_event(ServerEvent::ClientShellEndpointRequest {
+        client_id,
+        boot_id,
+        request: Box::new(api::schema::Request {
+            id: "navigate".into(),
+            method: api::schema::Method::WorkspaceFocus(api::schema::WorkspaceTarget {
+                workspace_id,
+            }),
+        }),
+    });
+}
+
+fn tab_focused_events(event_hub: &api::EventHub) -> usize {
+    event_hub
+        .events_after(0)
+        .iter()
+        .filter(|(_, event)| event.event == api::schema::EventKind::TabFocused)
+        .count()
+}
+
+#[tokio::test]
+async fn window_switching_to_another_space_leaves_the_current_tab_unseen() {
+    let (mut server, pane_id, _window) = switching_window_server(api::EventHub::default());
+    assert!(!server.app.state.workspaces[0].panes[&pane_id].seen);
+
+    focus_workspace(&mut server, 52, 1);
+    assert_eq!(server.app.state.active, Some(1));
+    present_shell_window(&mut server, 52);
+    assert!(!server.app.state.workspaces[0].panes[&pane_id].seen);
+}
+
+#[tokio::test]
+async fn window_switching_to_the_session_marks_its_current_tab_seen_once_presented() {
+    let event_hub = api::EventHub::default();
+    let (mut server, pane_id, _window) = switching_window_server(event_hub.clone());
+    assert!(!server.app.state.workspaces[0].panes[&pane_id].seen);
+    let announced = tab_focused_events(&event_hub);
+
+    present_shell_window(&mut server, 52);
+    assert!(server.app.state.workspaces[0].panes[&pane_id].seen);
+    assert_eq!(tab_focused_events(&event_hub), announced + 1);
+}
+
+#[tokio::test]
+async fn window_landing_on_the_current_space_announces_it_once_presented() {
+    let event_hub = api::EventHub::default();
+    let (mut server, pane_id, _window) = switching_window_server(event_hub.clone());
+
+    // Navigating to the space that is already current marks its tab seen without an event.
+    focus_workspace(&mut server, 52, 0);
+    assert!(server.app.state.workspaces[0].panes[&pane_id].seen);
+    let announced = tab_focused_events(&event_hub);
+
+    present_shell_window(&mut server, 52);
+    assert_eq!(tab_focused_events(&event_hub), announced + 1);
+}
+
+#[tokio::test]
+async fn window_that_never_presents_marks_seen_again_after_the_limit() {
+    let (mut server, pane_id, _window) = switching_window_server(api::EventHub::default());
+    server
+        .clients
+        .get_mut(&52)
+        .unwrap()
+        .shell_presentation_pending_until = Some(std::time::Instant::now());
+
+    server.sync_foreground_client_state();
+    assert!(server.app.state.workspaces[0].panes[&pane_id].seen);
+}
+
+#[tokio::test]
+async fn window_switching_away_clears_its_pending_presentation() {
+    let (mut server, _pane_id, _window) = switching_window_server(api::EventHub::default());
+    request_surface(&mut server, 52, "surface-off", false);
+    assert_eq!(server.clients[&52].shell_presentation_pending_until, None);
 }

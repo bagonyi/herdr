@@ -1,5 +1,9 @@
 use super::*;
 
+/// How long an activated window may take to confirm it shows the session before its focus
+/// marks agents seen again. A client gives up on an activation after 5 seconds.
+const SHELL_PRESENTATION_PENDING_LIMIT: std::time::Duration = std::time::Duration::from_secs(6);
+
 impl HeadlessServer {
     /// Apply a client-shell surface lease and return the resulting projection floor.
     ///
@@ -30,6 +34,8 @@ impl HeadlessServer {
                 return Some((false, client.shell_projection_revision));
             }
             client.shell_surface_active = active;
+            client.shell_presentation_pending_until =
+                active.then(|| std::time::Instant::now() + SHELL_PRESENTATION_PENDING_LIMIT);
             client.request_repaint();
             client.shell_graphics_delivery = Default::default();
             // The client drops target effects while its old source frame is frozen. Reset the
