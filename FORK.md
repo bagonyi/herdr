@@ -22,7 +22,8 @@ to it in the same window, and the red counts and notifications cover every sessi
 ![Herdr with three sessions in the sidebar and red counts of waiting agents on its spaces](assets/fork-screenshot.png)
 
 Three sessions in one window, each space showing how many agents are waiting for you. The 🟢 ⏳ 🟠
-markers in the tab bar come from a separate Herdr plugin, not from this fork.
+markers in the tab bar come from a separate Herdr plugin,
+[Tab Status](https://github.com/bagonyi/herdr-tab-status), not from this fork.
 
 ## what's changed
 
@@ -64,6 +65,15 @@ machine_order = ["work", "personal"]
 # Hide the agents panel; the spaces list takes the whole sidebar.
 hidden = true
 ```
+
+## plugins
+
+Two plugins that go well with this fork. Both work with stock Herdr too:
+
+- [Tab Status](https://github.com/bagonyi/herdr-tab-status) puts 🟢 done, ⏳ working or 🟠 blocked
+  in front of tab names, as in the screenshot above.
+- [Restore Commands](https://github.com/bagonyi/herdr-restore-commands) brings back commands such
+  as `gh dash` and `lnav` in their panes when a session restarts.
 
 ## building
 
