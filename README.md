@@ -3,6 +3,11 @@
 > The `patches` branch is the latest Herdr release plus a few sidebar and tab bar changes;
 > [FORK.md](FORK.md) lists them and explains how to build it.
 > The install instructions below install stock Herdr, not this fork.
+>
+> ![Herdrsson with three sessions in the sidebar and red counts of waiting agents on its spaces](assets/fork-screenshot.png)
+>
+> Three sessions in one window. The 🟢 ⏳ 🟠 tab markers come from a separate plugin,
+> [Tab Status](https://github.com/bagonyi/herdr-tab-status).
 
 # herdr
 
