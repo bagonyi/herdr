@@ -1,5 +1,6 @@
 //! Every saved session at once: plain `herdr` starts the saved sessions that aren't running and
-//! opens the one used last, and `herdr session stop --all` stops every running session.
+//! opens the one used last, and `herdr session stop --all` stops every running session. A session
+//! stopped on its own stays stopped until it is started again.
 
 use std::path::PathBuf;
 
@@ -52,11 +53,83 @@ pub(crate) fn remember_endpoint(catalog: &EndpointCatalog, endpoint_id: &ClientE
     }
 }
 
+/// A session stopped on its own, from the sidebar or with `herdr session stop <name>`, keeps this
+/// file in its folder until it starts again, so plain `herdr` leaves it stopped. Stopping every
+/// session at once, or shutting the computer down, leaves no file, so those sessions come back.
+const KEEP_STOPPED_FILE: &str = "keep-stopped";
+
+pub(crate) fn keep_stopped(name: &str) {
+    let path = crate::session::data_dir_for(Some(name)).join(KEEP_STOPPED_FILE);
+    if let Err(error) = std::fs::write(&path, "") {
+        tracing::warn!(%error, path = %path.display(), "failed to mark a session kept stopped");
+    }
+}
+
+fn kept_stopped(name: &str) -> bool {
+    crate::session::data_dir_for(Some(name))
+        .join(KEEP_STOPPED_FILE)
+        .exists()
+}
+
+fn remove_keep_stopped(dir: &std::path::Path) {
+    let path = dir.join(KEEP_STOPPED_FILE);
+    match std::fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            tracing::warn!(%error, path = %path.display(), "failed to clear a kept-stopped mark")
+        }
+    }
+}
+
+/// Called by a session's server as it starts, however it was started.
+pub(crate) fn clear_keep_stopped() {
+    remove_keep_stopped(&crate::session::data_dir());
+}
+
+/// Stops one session and keeps it stopped. The mark goes first: stopping the session can end
+/// the caller too, as when it runs in one of that session's panes or in a window showing it.
+pub(crate) fn stop_keeping_stopped(name: &str) -> Result<SessionInfo, String> {
+    keep_stopped(name);
+    let stopped = crate::session::stop_session(Some(name));
+    if stopped.is_err() && crate::session::session_info(Some(name)).running {
+        remove_keep_stopped(&crate::session::data_dir_for(Some(name)));
+    }
+    stopped
+}
+
+/// What a window's sidebar shows about saved sessions besides the running ones.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SavedSessions {
+    /// Saved named sessions that aren't running, A-Z.
+    pub(crate) stopped: Vec<String>,
+    /// Whether this window's own session is running; always so for the default session.
+    pub(crate) own_running: bool,
+}
+
+pub(crate) fn saved_sessions(sessions: &[SessionInfo]) -> SavedSessions {
+    let own = crate::session::active_name();
+    SavedSessions {
+        stopped: sessions
+            .iter()
+            .filter(|session| !session.default && !session.running)
+            .map(|session| session.name.clone())
+            .collect(),
+        // Session folders usually ignore case, so `--session work` may show a folder named Work.
+        own_running: own.is_none_or(|own| {
+            sessions
+                .iter()
+                .any(|session| session.running && session.name.eq_ignore_ascii_case(&own))
+        }),
+    }
+}
+
 /// Runs before a window opens. `herdr --session <name>` only notes the session as the last one
-/// used. Plain `herdr` starts every saved named session that isn't running, in the background,
-/// then opens the session used last, or else the first in the sidebar's order, as
-/// `herdr --session <name>` would. With no saved named sessions, or a socket or session chosen
-/// through the environment, Herdr opens the default session as before.
+/// used. Plain `herdr` starts every saved named session that isn't running or kept stopped, in
+/// the background, then opens the session used last, or else the first in the sidebar's order,
+/// as `herdr --session <name>` would. With every session kept stopped, it opens the one used last
+/// anyway. With no saved named sessions, or a socket or session chosen through the environment,
+/// Herdr opens the default session as before.
 pub(crate) fn prepare_launch(machine_order: &[String]) {
     if crate::session::explicit_session_requested() {
         if let Some(name) = crate::session::active_name() {
@@ -79,11 +152,19 @@ pub(crate) fn prepare_launch(machine_order: &[String]) {
             return;
         }
     };
-    let Some(open) = session_to_open(&saved, last_session().as_deref(), machine_order) else {
+    let starting = saved
+        .iter()
+        .filter(|session| session.running || !kept_stopped(&session.name))
+        .cloned()
+        .collect::<Vec<_>>();
+    let last = last_session();
+    let Some(open) = session_to_open(&starting, last.as_deref(), machine_order)
+        .or_else(|| session_to_open(&saved, last.as_deref(), machine_order))
+    else {
         return;
     };
     let open = open.to_string();
-    for session in &saved {
+    for session in &starting {
         if session.running || session.name == open {
             continue;
         }

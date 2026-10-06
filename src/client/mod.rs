@@ -828,6 +828,25 @@ async fn run_client_loop(
 
         match event {
             ClientLoopEvent::EndpointCatalog(reload) => pending_catalog = Some(reload),
+            ClientLoopEvent::SavedSessions(saved) => {
+                if let Some(shell) = state.shell.as_mut() {
+                    let (changed, own_back) = shell.set_saved_sessions(saved);
+                    // This window's own session is running again: reconnect now.
+                    if own_back {
+                        supervisors.retry_soon(&endpoint::ClientEndpointId::Local, now);
+                    }
+                    // During a switch, the frame that ends it shows the change.
+                    let switching = scheduled_activation.is_some()
+                        || pending_activation.is_some()
+                        || state.deferred_local_activation.is_some();
+                    if changed && !switching {
+                        let frame = shell.compose(state.reported_size.0, state.reported_size.1);
+                        if let Some(frame) = frame {
+                            state.present_frozen_chrome(frame);
+                        }
+                    }
+                }
+            }
             #[cfg(unix)]
             ClientLoopEvent::StdinInput(data) => {
                 let image_bridge_active = endpoint_accepts_local_images(
@@ -1742,6 +1761,10 @@ async fn run_client_loop(
                         let stopped = reason.as_deref() == Some("server is shutting down")
                             && write_stream.active_id().is_local();
                         if (!federated || stopped) && endpoint_id.is_local() {
+                            // A stop or delete this window started finishes before it closes.
+                            if let Some(shell) = state.shell.as_mut() {
+                                shell.finish_session_stops(std::time::Duration::from_secs(5));
+                            }
                             return Err(ClientError::ServerShutdown { reason });
                         }
                         write_stream.fail(

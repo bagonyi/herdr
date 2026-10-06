@@ -494,7 +494,12 @@ fn session_stop(args: &[String]) -> std::io::Result<i32> {
             return Ok(1);
         }
     };
-    match crate::session::stop_session(target.as_deref()) {
+    let stopped = match target.as_deref() {
+        // A session stopped on its own stays stopped when plain `herdr` starts the others.
+        Some(name) => crate::client::saved_sessions::stop_keeping_stopped(name),
+        None => crate::session::stop_session(None),
+    };
+    match stopped {
         Ok(session) => {
             if json {
                 _print_json(&serde_json::json!({

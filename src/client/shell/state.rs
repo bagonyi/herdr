@@ -106,6 +106,9 @@ pub(super) struct ShellHitMap {
     pub(super) new_workspace: Rect,
     pub(super) new_session: Rect,
     pub(super) new_session_workspace: Vec<(Rect, ClientEndpointId)>,
+    pub(super) session_stop: Vec<(Rect, ClientEndpointId)>,
+    pub(super) stopped_header: Rect,
+    pub(super) stopped_sessions: Vec<super::session_create::StoppedSessionHit>,
     pub(super) new_tab: Rect,
     pub(super) tab_scroll_left: Rect,
     pub(super) tab_scroll_right: Rect,
@@ -535,6 +538,7 @@ pub(super) enum ClientContextMenuAction {
     Zoom,
     ToggleRightClickPassthrough,
     ClosePane,
+    StartSession,
     StopSession,
     DeleteSession,
 }
@@ -559,8 +563,9 @@ pub(super) enum ClientContextMenuTarget {
         has_manual_label: bool,
         right_click_passthrough: bool,
     },
+    /// A session on this computer; a stopped one has no endpoint.
     Session {
-        endpoint_id: ClientEndpointId,
+        endpoint_id: Option<ClientEndpointId>,
         name: String,
     },
 }

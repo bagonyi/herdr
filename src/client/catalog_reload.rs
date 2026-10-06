@@ -7,12 +7,25 @@ pub(super) fn watch_profiles(
     // One bounded read per second per client, independent of rendering and pane count.
     std::thread::spawn(move || {
         let mut previous = None;
+        let mut previous_saved = None;
         while !should_quit.load(Ordering::Acquire) {
-            let current = endpoint::EndpointCatalog::load_profiles();
+            // One look at the sessions serves both the running and the stopped ones.
+            let sessions = crate::session::list_sessions().unwrap_or_default();
+            let current = endpoint::EndpointCatalog::load_profiles_with(&sessions);
             if previous.as_ref() != Some(&current) {
                 previous = Some(current.clone());
                 if event_tx
                     .blocking_send(ClientLoopEvent::EndpointCatalog(current))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            let saved = super::saved_sessions::saved_sessions(&sessions);
+            if previous_saved.as_ref() != Some(&saved) {
+                previous_saved = Some(saved.clone());
+                if event_tx
+                    .blocking_send(ClientLoopEvent::SavedSessions(saved))
                     .is_err()
                 {
                     break;

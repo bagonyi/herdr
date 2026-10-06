@@ -1,6 +1,15 @@
 use super::render::{display_width, put_right_text, put_text, ShellRenderState};
 use super::*;
 
+/// The window's own session is left out while it isn't running: stopped, it shows among the
+/// stopped ones.
+fn shown(state: &ShellRenderState<'_>, endpoint: &ClientShellEndpoint) -> bool {
+    !(endpoint.endpoint_id.is_local()
+        && state
+            .sessions_sidebar
+            .is_some_and(|sidebar| sidebar.own_hidden))
+}
+
 fn collapsed_groups_for_endpoint<'a>(
     state: &'a ShellRenderState<'_>,
     endpoint_id: &ClientEndpointId,
@@ -26,7 +35,11 @@ pub(super) fn render_collapsed(
     let mut total_rows = 0usize;
     let mut selected_row = None;
     let reveal = std::mem::take(state.reveal_navigation_workspace);
-    for endpoint in state.endpoints {
+    for endpoint in state
+        .endpoints
+        .iter()
+        .filter(|endpoint| shown(state, endpoint))
+    {
         total_rows += 1;
         if state.collapsed_endpoints.contains(&endpoint.endpoint_id) {
             continue;
@@ -61,6 +74,9 @@ pub(super) fn render_collapsed(
     let mut skip = *state.workspace_scroll;
     let mut y = workspace_area.y;
     for (index, endpoint) in state.endpoints.iter().enumerate() {
+        if !shown(state, endpoint) {
+            continue;
+        }
         if y >= workspace_area.bottom() {
             break;
         }
@@ -303,9 +319,15 @@ pub(super) fn render_expanded(
             endpoint: usize,
             entry: WorkspaceEntry,
         },
+        Gap,
+        StoppedHeader,
+        Stopped(usize),
     }
     let mut rows = Vec::new();
     for (endpoint_index, endpoint) in state.endpoints.iter().enumerate() {
+        if !shown(state, endpoint) {
+            continue;
+        }
         rows.push(Row::Endpoint(endpoint_index));
         if state.collapsed_endpoints.contains(&endpoint.endpoint_id) {
             continue;
@@ -323,6 +345,17 @@ pub(super) fn render_expanded(
             );
         }
     }
+    let stopped = state
+        .sessions_sidebar
+        .filter(|sidebar| !sidebar.stopped.is_empty());
+    if let Some(sidebar) = stopped {
+        rows.extend([Row::Gap, Row::StoppedHeader]);
+        if !sidebar.folded {
+            // The same gap as under the "sessions" heading.
+            rows.push(Row::Gap);
+            rows.extend((0..sidebar.stopped.len()).map(Row::Stopped));
+        }
+    }
     let body = Rect::new(
         workspace_area.x,
         workspace_area.y.saturating_add(WORKSPACE_HEADER_ROWS),
@@ -335,7 +368,7 @@ pub(super) fn render_expanded(
     let row_heights = rows
         .iter()
         .map(|row| match row {
-            Row::Endpoint(_) => 1,
+            Row::Endpoint(_) | Row::Gap | Row::StoppedHeader | Row::Stopped(_) => 1,
             Row::Workspace { endpoint, entry } => {
                 let endpoint = &state.endpoints[*endpoint];
                 let collapsed_groups = collapsed_groups_for_endpoint(state, &endpoint.endpoint_id)
@@ -403,7 +436,7 @@ pub(super) fn render_expanded(
                         }
                     })
             }
-            Row::Endpoint(_) => false,
+            _ => false,
         });
         if let Some(selected_row) = selected_row {
             *state.workspace_scroll = super::scroll::list_scroll_start_to_reveal(
@@ -447,7 +480,15 @@ pub(super) fn render_expanded(
                 let rect = Rect::new(body.x, y, content_width, 1);
                 let collapsed = state.collapsed_endpoints.contains(&endpoint.endpoint_id);
                 let marker = if collapsed { "▸" } else { "▾" };
-                let (status_badge, new_workspace) = render_endpoint_row(
+                let buttons =
+                    config.mouse_capture && endpoint.status == ClientEndpointStatus::Online;
+                // Every session on this computer but the default one can be stopped here.
+                let stoppable = endpoint.is_local_session()
+                    && (!endpoint.endpoint_id.is_local()
+                        || state
+                            .sessions_sidebar
+                            .is_some_and(|sidebar| sidebar.own_named));
+                let (status_badge, new_workspace, stop) = render_endpoint_row(
                     buffer,
                     rect,
                     marker,
@@ -458,13 +499,17 @@ pub(super) fn render_expanded(
                     },
                     endpoint,
                     collapsed && &endpoint.endpoint_id == state.active_endpoint_id,
-                    config.mouse_capture && endpoint.status == ClientEndpointStatus::Online,
+                    buttons,
+                    buttons && stoppable,
                     state.machine_diagnostics,
                     palette,
                 );
                 if !new_workspace.is_empty() {
                     hits.new_session_workspace
                         .push((new_workspace, endpoint.endpoint_id.clone()));
+                }
+                if !stop.is_empty() {
+                    hits.session_stop.push((stop, endpoint.endpoint_id.clone()));
                 }
                 hits.machines.push(MachineHit {
                     rect,
@@ -570,6 +615,36 @@ pub(super) fn render_expanded(
                     .saturating_add(height)
                     .saturating_add(gaps.get(row_index).copied().unwrap_or(0));
             }
+            Row::Gap => {
+                if y >= body.bottom() {
+                    break;
+                }
+                y = y.saturating_add(1);
+            }
+            Row::StoppedHeader | Row::Stopped(_) => {
+                if y >= body.bottom() {
+                    break;
+                }
+                let Some(sidebar) = stopped else {
+                    continue;
+                };
+                let rect = Rect::new(body.x, y, content_width, 1);
+                match row {
+                    Row::Stopped(index) => super::session_create::render_stopped_session(
+                        buffer,
+                        rect,
+                        sidebar,
+                        *index,
+                        config.mouse_capture,
+                        palette,
+                        hits,
+                    ),
+                    _ => super::session_create::render_stopped_heading(
+                        buffer, rect, sidebar, palette, hits,
+                    ),
+                }
+                y = y.saturating_add(1);
+            }
         }
     }
     if show_scrollbar {
@@ -657,9 +732,10 @@ fn render_endpoint_row(
     endpoint: &ClientShellEndpoint,
     highlighted: bool,
     plus: bool,
+    stop: bool,
     auth: &super::machine_diagnostics::MachineDiagnostics,
     palette: &Palette,
-) -> (Rect, Rect) {
+) -> (Rect, Rect, Rect) {
     if highlighted {
         buffer.set_style(rect, Style::default().bg(palette.active_row_bg));
     }
@@ -685,15 +761,22 @@ fn render_endpoint_row(
     let right_width = signal_width
         .saturating_add(unseen_width)
         .saturating_add(u16::from(signal_width > 0 && unseen_width > 0));
-    // A + for a new space sits left of the badges, or in the last-but-one column.
+    // A + for a new space sits left of the badges, or in the last-but-one column, and a session's
+    // stop button left of the +.
     let plus_x = rect.right().saturating_sub(right_width.saturating_add(2));
     let plus = plus && plus_x > rect.x.saturating_add(4);
+    let stop_x = plus_x.saturating_sub(2);
+    let stop = plus && stop && stop_x > rect.x.saturating_add(4);
     put_text(
         buffer,
         rect.x,
         rect.y,
         rect.width
-            .saturating_sub(right_width.saturating_add(if plus { 3 } else { 1 })),
+            .saturating_sub(right_width.saturating_add(match (plus, stop) {
+                (_, true) => 5,
+                (true, false) => 3,
+                (false, false) => 1,
+            })),
         &format!(" {marker} {}", endpoint.label),
         Style::default()
             .fg(
@@ -725,6 +808,12 @@ fn render_endpoint_row(
     } else {
         Rect::default()
     };
+    // Shown while the row is hovered.
+    let stop = if stop {
+        super::session_create::button_rect(stop_x, rect.y)
+    } else {
+        Rect::default()
+    };
     (
         Rect::new(
             rect.right().saturating_sub(signal_width),
@@ -733,5 +822,6 @@ fn render_endpoint_row(
             1,
         ),
         new_workspace,
+        stop,
     )
 }

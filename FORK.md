@@ -31,7 +31,7 @@ markers in the tab bar come from a separate Herdr plugin,
 
 - Other running sessions on this computer are listed in the sidebar next to saved SSH machines.
   Click one to switch to it in the same window; its agents and notifications show up too. Only
-  running named sessions are listed, not the default session.
+  named sessions are listed, not the default session.
 - `herdr --session <name>` opens that session instead of the one you last selected.
 - Sessions are sorted A–Z, so every window shows the same order. The `machine_order` setting
   puts chosen sessions or machines first.
@@ -43,14 +43,24 @@ markers in the tab bar come from a separate Herdr plugin,
   `herdr --session <name>` would, then switches to it. Its first space opens in your home folder.
   Spaces in the name become dashes, so "Test session" starts `Test-session`.
 - A + on each session's row creates a space in that session, switching to it first if needed.
-- Right-clicking another session offers "Stop session" (its spaces come back when you start it
-  again with the + and its name) and "Delete session" (stops it and forgets its spaces). Both
-  ask first.
+- A ■ shows on a session's row while the mouse is over it, and stops the session, after asking.
+  Stopping the session on screen switches the window to another running session first, so the
+  window stays open while any other session runs.
+- Stopped sessions are listed under a "stopped sessions" heading below the running ones, in any
+  window that lists sessions.
+  Clicking the heading folds them away (hovering it shows "hide" or "show"; folded, it shows how
+  many there are). A ▶ on each starts it in the background, and clicking its name starts it and
+  switches to it. Hovering a stopped session shows a trash can that deletes it, after asking.
+- Right-clicking a session offers "Stop session" and "Delete session" (stops it and forgets its
+  spaces), or "Start session" and "Delete session" for a stopped one. Stop and delete ask first.
+- Right-clicking a space of another session switches to that session and opens the space's menu.
+- Ctrl+click works as a right-click outside panes, as in other macOS apps. Inside panes it
+  still goes to the program running there.
 - A named session ends when its last space is closed, like a tmux session, and is deleted;
   stock Herdr opens a fresh space instead. If its last shell was killed by a signal (say, at
   logout), it stops but keeps its spaces. The default session keeps the stock behaviour.
-- A window showing its own session closes when that session is stopped, instead of waiting to
-  reconnect. Live updates still reconnect.
+- A window showing its own session closes when that session is stopped from elsewhere, such as
+  `herdr session stop`, instead of waiting to reconnect. Live updates still reconnect.
 
 ### starting and stopping every session
 
@@ -60,6 +70,8 @@ markers in the tab bar come from a separate Herdr plugin,
   (or the first in the sidebar). It starts the default session only when no named session is
   saved. So after `herdr session stop --all`, or a restart of the computer, plain `herdr` brings
   everything back, and after detaching it reopens the session you were in.
+- A session stopped on its own, with its ■, its menu or `herdr session stop <name>`, stays
+  stopped: plain `herdr` leaves it out until you start it again.
 
 ### agents
 
@@ -77,7 +89,8 @@ markers in the tab bar come from a separate Herdr plugin,
 
 ### mouse
 
-- The tab, session or space row under the mouse gets a lighter background.
+- The tab, session or space row under the mouse gets a lighter background, and the sidebar's +, ■,
+  ▶ and trash can buttons light up.
 - The sidebar's dividing line lights up while the mouse is over it or dragging it.
 
 ## settings

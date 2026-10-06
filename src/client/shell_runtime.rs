@@ -447,9 +447,9 @@ pub(super) fn complete_endpoint_activation(
     };
     state.unfreeze_presentation();
     if successor.is_none() {
-        // A space asked for from another session's + button, now that session is shown.
+        // Work waiting for this switch, such as a space asked for from another session's +.
         if let Some(shell) = state.shell.as_mut() {
-            let actions = shell.take_pending_workspace_create();
+            let actions = shell.take_after_switch();
             dispatch_client_shell_actions(
                 actions,
                 endpoint_commands,

@@ -248,7 +248,8 @@ pub(super) struct ShellRenderState<'a> {
     pub(super) reveal_navigation_workspace: &'a mut bool,
     pub(super) dragged_workspace_id: Option<&'a str>,
     pub(super) workspace_drop_indicator_row: Option<u16>,
-    pub(super) sessions_sidebar: bool,
+    /// Set when the sidebar lists sessions, with the stopped ones to show below.
+    pub(super) sessions_sidebar: Option<&'a super::session_create::SessionsSidebar>,
 }
 
 pub(super) fn render_shell(
@@ -269,7 +270,7 @@ pub(super) fn render_shell(
         );
     }
     if layout.sidebar.width > 0 {
-        if state.sessions_sidebar {
+        if state.sessions_sidebar.is_some() {
             if state.sidebar_collapsed {
                 super::endpoint_sidebar::render_collapsed(
                     buffer,

@@ -6,8 +6,17 @@ impl ClientContextMenuOverlay {
 
         let item = |label, action| ClientContextMenuItem { label, action };
         match &self.target {
-            ClientContextMenuTarget::Session { .. } => vec![
+            ClientContextMenuTarget::Session {
+                endpoint_id: Some(_),
+                ..
+            } => vec![
                 item("Stop session", Action::StopSession),
+                item("Delete session", Action::DeleteSession),
+            ],
+            ClientContextMenuTarget::Session {
+                endpoint_id: None, ..
+            } => vec![
+                item("Start session", Action::StartSession),
                 item("Delete session", Action::DeleteSession),
             ],
             ClientContextMenuTarget::Workspace { is_git: false, .. } => {
@@ -217,6 +226,11 @@ impl ClientShellState {
                 action,
                 outcome,
             ),
+            ClientContextMenuTarget::Session { name, .. }
+                if action == ClientContextMenuAction::StartSession =>
+            {
+                self.start_stopped_session(&name, false, outcome)
+            }
             ClientContextMenuTarget::Session { endpoint_id, name } => self.confirm_session_stop(
                 endpoint_id,
                 name,

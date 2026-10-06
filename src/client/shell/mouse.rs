@@ -652,6 +652,7 @@ impl ClientShellState {
     }
 
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent, outcome: &mut ClientShellInput) {
+        let mouse = self.ctrl_click_as_right_click(mouse);
         self.update_link_hover(mouse, outcome);
         self.update_row_hover(mouse, outcome);
         let point = (mouse.column, mouse.row);
@@ -1818,6 +1819,16 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
+                if !self.sidebar_collapsed
+                    && self.open_other_session_workspace_menu(
+                        point,
+                        mouse.column,
+                        mouse.row,
+                        outcome,
+                    )
+                {
+                    return;
+                }
                 let tab_id = self
                     .hits
                     .tabs
@@ -2005,7 +2016,7 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
-                if self.handle_session_plus_click(point, outcome) {
+                if self.handle_session_click(point, outcome) {
                     return;
                 }
                 if self.handle_endpoint_machine_click(point, outcome) {

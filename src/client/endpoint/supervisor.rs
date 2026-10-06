@@ -103,6 +103,18 @@ impl EndpointSupervisors {
         self.endpoints.insert(ClientEndpointId::Local, state);
     }
 
+    /// Retries an endpoint without waiting out its backoff, such as this window's own session
+    /// once the window has started it again.
+    pub(crate) fn retry_soon(&mut self, endpoint_id: &ClientEndpointId, now: Instant) {
+        let Some(state) = self.endpoints.get_mut(endpoint_id) else {
+            return;
+        };
+        state.attempts = 0;
+        if !state.in_flight && state.next_attempt.is_some() {
+            state.next_attempt = Some(now);
+        }
+    }
+
     pub(crate) fn reconcile_profiles(
         &mut self,
         profiles: &[super::SavedSshEndpoint],

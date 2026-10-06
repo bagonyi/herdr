@@ -85,6 +85,8 @@ pub fn run_server() -> io::Result<()> {
             client_socket = %client_socket_path().display(),
             "herdr server started"
         );
+        // A session stopped on its own and started again joins plain `herdr` again.
+        crate::client::saved_sessions::clear_keep_stopped();
         print_ready_message(&api::socket_path(), &client_socket_path());
         server.app.run_plugin_startup_hooks();
 

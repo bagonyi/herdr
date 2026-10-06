@@ -107,7 +107,8 @@ impl EndpointCatalog {
     pub(crate) fn load_for_client() -> Result<Self, String> {
         let mut catalog =
             Self::load_from_paths_with(&catalog_path(), &selection_path(), |catalog| {
-                catalog.ssh = with_local_sessions(std::mem::take(&mut catalog.ssh));
+                let sessions = crate::session::list_sessions().unwrap_or_default();
+                catalog.ssh = with_local_sessions(std::mem::take(&mut catalog.ssh), &sessions);
             })?;
         if crate::session::explicit_session_requested() {
             // `--session X` opens X, not the machine last picked in any window.
@@ -117,8 +118,16 @@ impl EndpointCatalog {
     }
 
     pub(crate) fn load_profiles() -> Result<Vec<SavedSshEndpoint>, String> {
+        Self::load_profiles_with(&crate::session::list_sessions().unwrap_or_default())
+    }
+
+    /// Saved SSH machines plus the running `sessions` on this computer.
+    pub(crate) fn load_profiles_with(
+        sessions: &[crate::session::SessionInfo],
+    ) -> Result<Vec<SavedSshEndpoint>, String> {
         // Live clients keep their own selection, independent of other attached clients.
-        Self::load_from_path(&catalog_path()).map(|catalog| with_local_sessions(catalog.ssh))
+        Self::load_from_path(&catalog_path())
+            .map(|catalog| with_local_sessions(catalog.ssh, sessions))
     }
 
     fn load_from_paths(catalog_path: &Path, selection_path: &Path) -> Result<Self, String> {
@@ -397,17 +406,20 @@ pub(crate) const LOCAL_SESSION_TARGET: &str = "local";
 
 /// Other running named sessions on this machine, A-Z, ahead of the saved profiles.
 /// They are generated on every read and never stored.
-fn with_local_sessions(mut saved: Vec<SavedSshEndpoint>) -> Vec<SavedSshEndpoint> {
+fn with_local_sessions(
+    mut saved: Vec<SavedSshEndpoint>,
+    sessions: &[crate::session::SessionInfo],
+) -> Vec<SavedSshEndpoint> {
     saved.retain(|profile| {
         !is_local_session_profile(profile.id.as_str(), &profile.target, &profile.session)
     });
     let home = crate::session::active_name();
-    let mut profiles = crate::session::list_sessions()
-        .unwrap_or_default()
-        .into_iter()
+    let mut profiles = sessions
+        .iter()
         .filter(|session| {
             session.running && !session.default && Some(&session.name) != home.as_ref()
         })
+        .cloned()
         .map(|session| SavedSshEndpoint {
             id: local_session_profile_id(&session.name),
             label: session.name.clone(),
