@@ -1,8 +1,13 @@
-# herdr fork
+# Herdrsson
 
-A personal fork of [herdrdev/herdr](https://github.com/herdrdev/herdr). The `patches` branch is
-the latest Herdr release with the changes below on top. Everything else is stock Herdr; see the
-[README](README.md) and [herdr.dev/docs](https://herdr.dev/docs/).
+Herdrsson ("son of Herdr" in Icelandic) is a personal fork of
+[herdrdev/herdr](https://github.com/herdrdev/herdr). It's unofficial: the Herdr project doesn't
+make or endorse it. The `patches` branch is the latest Herdr release with the changes below on
+top. Everything else is stock Herdr; see the [README](README.md) and
+[herdr.dev/docs](https://herdr.dev/docs/).
+
+It installs and runs as `herdr`, with Herdr's config folder, plugins and agent integrations, so
+the `herdr` commands and `~/.config/herdr/config.toml` below are right as written.
 
 ## why sessions
 
@@ -19,7 +24,7 @@ This fork lists every running session on the computer in the sidebar, the way He
 machines, with each session's spaces below it. Clicking a session or one of its spaces switches
 to it in the same window, and the red counts and notifications cover every session at once.
 
-![Herdr with three sessions in the sidebar and red counts of waiting agents on its spaces](assets/fork-screenshot.png)
+![Herdrsson with three sessions in the sidebar and red counts of waiting agents on its spaces](assets/fork-screenshot.png)
 
 Three sessions in one window, each space showing how many agents are waiting for you. The 🟢 ⏳ 🟠
 markers in the tab bar come from a separate Herdr plugin,
@@ -142,24 +147,40 @@ Two plugins that go well with this fork. Both work with stock Herdr too:
 
 ## building
 
-There are no releases or binaries; build it from source. You need
+There are no prebuilt binaries; build it from source. You need
 [rustup](https://rustup.rs) (it installs the Rust version in `rust-toolchain.toml`) and
 [Zig](https://ziglang.org/download/) 0.16.0, either on `PATH` or named by the `ZIG` variable.
 
 ```bash
-git clone -b patches https://github.com/bagonyi/herdr
-cd herdr
+git clone -b patches https://github.com/bagonyi/herdrsson
+cd herdrsson
 cargo build --release --locked
 # then copy target/release/herdr somewhere on your PATH
 ```
 
 Turn off Herdr's update check in `~/.config/herdr/config.toml`, and don't run `herdr update`:
-both would replace the fork with stock Herdr.
+both would replace Herdrsson with stock Herdr.
 
 ```toml
 [update]
 version_check = false
 ```
+
+## versions
+
+`herdr --version` shows two numbers: Herdrsson's own version, which is the date it was
+released, and the Herdr release it's built on.
+
+```
+$ herdr --version
+herdrsson 2026.10.06 (based on herdr 0.9.3)
+```
+
+A second release on the same day ends in `.2`. Moving onto a new Herdr release changes only the
+Herdr number. Anything that compares versions, such as a plugin's `min_herdr_version`, still
+uses the Herdr number.
+
+- 2026.10.06 (on Herdr 0.9.3): the first release as Herdrsson, with everything listed above.
 
 ## caveats
 
@@ -167,12 +188,12 @@ version_check = false
 - The branch is rebased onto each new Herdr release and force-pushed, so `git pull` fails
   after an update. Use `git fetch` and `git reset --hard origin/patches` instead; this throws
   away any changes of your own.
-- It still reports the upstream version number, for example `herdr 0.9.3`.
 
 ## license
 
-Herdr is licensed under the [Apache License 2.0](LICENSE). This fork changes files under `src/`,
-adds a note at the top of `README.md`, and adds this file. Each change is a separate commit on
+Herdr is licensed under the [Apache License 2.0](LICENSE). Herdr is the upstream project's name;
+Herdrsson uses it only to say where it comes from. This fork changes files under `src/`, adds a
+note at the top of `README.md`, and adds this file and `HERDRSSON_VERSION`. Each change is a separate commit on
 top of a Herdr release tag. This fork doesn't carry the tags, so fetch them from Herdr to list
 the commits and every changed file:
 
