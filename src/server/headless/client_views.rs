@@ -266,6 +266,8 @@ impl HeadlessServer {
                 | Method::PaneSplit(_)
                 | Method::PaneSwap(_)
                 | Method::PaneZoom(_)
+                // Fork: a plugin's split or tab starts at a guessed size.
+                | Method::PluginPaneOpen(_)
                 | Method::TabClose(_)
                 | Method::TabCreate(_)
                 | Method::TabFocus(_)
@@ -299,6 +301,8 @@ impl HeadlessServer {
                 | Method::PaneSplit(_)
                 | Method::PaneSwap(_)
                 | Method::PaneZoom(_)
+                // Fork: a plugin's split or tab starts at a guessed size.
+                | Method::PluginPaneOpen(_)
                 | Method::TabClose(_)
                 | Method::TabCreate(_)
                 | Method::TabFocus(_)

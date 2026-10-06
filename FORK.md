@@ -106,6 +106,12 @@ markers in the tab bar come from a separate Herdr plugin,
   come back. Each space remembers its own last tab; closed tabs and spaces are skipped. Both are
   unset by default.
 
+### plugin panes
+
+- A pane a plugin opens as a split or a tab gets its real size straight away. Stock Herdr starts
+  it at the size of the pane it splits, so a full-screen program in it could stay drawn at that
+  size, cut off at the edge, until you clicked it.
+
 ## settings
 
 Four settings are new; all go in `~/.config/herdr/config.toml`:
