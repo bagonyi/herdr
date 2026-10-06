@@ -489,13 +489,16 @@ impl App {
         .display()
         .to_string();
         let placement = params.placement.unwrap_or(pane.placement);
-        if placement != PluginPanePlacement::Popup
-            && (params.width.is_some() || params.height.is_some())
+        // Herdrsson: a split also takes a size; see open_plugin_split_pane.
+        if !matches!(
+            placement,
+            PluginPanePlacement::Popup | PluginPanePlacement::Split | PluginPanePlacement::Zoomed
+        ) && (params.width.is_some() || params.height.is_some())
         {
             return encode_error(
                 id,
                 "invalid_params",
-                "width and height are only supported when placement is popup",
+                "width and height are only supported when placement is popup, split or zoomed",
             );
         }
         if placement == PluginPanePlacement::Popup && self.state.popup_pane.is_some() {
@@ -1553,12 +1556,12 @@ platforms = ["linux", "macos"]
             method: Method::PluginPaneOpen(PluginPaneOpenParams {
                 plugin_id: "example.worktree-bootstrap".into(),
                 entrypoint: "board".into(),
-                placement: Some(PluginPanePlacement::Split),
+                placement: Some(PluginPanePlacement::Tab),
                 width: Some(crate::popup_size::PopupSize::Percent(80)),
                 height: None,
                 workspace_id: None,
                 target_pane_id: None,
-                direction: Some(crate::api::schema::SplitDirection::Right),
+                direction: None,
                 cwd: None,
                 focus: false,
                 env: std::collections::HashMap::new(),
@@ -1567,6 +1570,96 @@ platforms = ["linux", "macos"]
 
         let value: serde_json::Value = serde_json::from_str(&response).unwrap();
         assert_eq!(value["error"]["code"], "invalid_params");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn plugin_pane_open_split_takes_its_size_as_a_percentage() {
+        let mut app = test_app();
+        app.state.workspaces = vec![crate::workspace::Workspace::test_new("plugin-split-size")];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+        app.state.mode = crate::app::Mode::Terminal;
+        let root = unique_temp_path("plugin-pane-split-size");
+        write_manifest_content(
+            &root,
+            r#"
+id = "example.split"
+name = "Split Plugin"
+version = "0.1.0"
+min_herdr_version = "0.6.10"
+platforms = ["linux", "macos"]
+
+[[panes]]
+id = "board"
+title = "Plugin Board"
+placement = "split"
+command = ["sh", "-c", "sleep 1"]
+"#,
+        );
+        link_manifest(&mut app, &root);
+
+        use crate::api::schema::SplitDirection::{self, Down, Right};
+        use crate::popup_size::PopupSize::{self, Cells, Percent};
+        fn open(
+            app: &mut App,
+            direction: SplitDirection,
+            width: Option<PopupSize>,
+            height: Option<PopupSize>,
+        ) -> serde_json::Value {
+            let response = app.handle_api_request(Request {
+                id: "pane-open-split-size".into(),
+                method: Method::PluginPaneOpen(PluginPaneOpenParams {
+                    plugin_id: "example.split".into(),
+                    entrypoint: "board".into(),
+                    placement: Some(PluginPanePlacement::Split),
+                    width,
+                    height,
+                    workspace_id: None,
+                    target_pane_id: None,
+                    direction: Some(direction),
+                    cwd: None,
+                    focus: false,
+                    env: std::collections::HashMap::new(),
+                }),
+            });
+            serde_json::from_str(&response).unwrap()
+        }
+        let area = ratatui::layout::Rect::new(0, 0, 100, 40);
+        let new_pane_rect = |app: &App, response: &serde_json::Value| {
+            let public_id = response["result"]["plugin_pane"]["pane"]["pane_id"]
+                .as_str()
+                .expect("opened pane id");
+            let (_, pane_id) = app.parse_pane_id(public_id).expect("pane id parses");
+            app.state.workspaces[0].tabs[0]
+                .layout
+                .panes(area)
+                .into_iter()
+                .find(|pane| pane.id == pane_id)
+                .expect("opened pane in layout")
+                .rect
+        };
+
+        assert_eq!(
+            open(&mut app, Down, Some(Percent(30)), None)["error"]["code"],
+            "invalid_params"
+        );
+        assert_eq!(
+            open(&mut app, Right, Some(Cells(30)), None)["error"]["code"],
+            "invalid_params"
+        );
+        // The new pane, not the one split, gets the size: 30% of the width,
+        // then 25% of the height of the focused pane it splits below.
+        let right = open(&mut app, Right, Some(Percent(30)), None);
+        assert_eq!(new_pane_rect(&app, &right).width, 30);
+        let down = open(&mut app, Down, None, Some(Percent(25)));
+        assert_eq!(new_pane_rect(&app, &down).height, 10);
+
+        for (_, runtime) in app.terminal_runtimes.drain() {
+            runtime.shutdown();
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 

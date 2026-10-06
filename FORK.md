@@ -116,6 +116,11 @@ markers in the tab bar come from a separate Herdr plugin,
 - A pane a plugin opens as a split or a tab gets its real size straight away. Stock Herdr starts
   it at the size of the pane it splits, so a full-screen program in it could stay drawn at that
   size, cut off at the edge, until you clicked it.
+- A plugin can open a split at a set size: `herdr plugin pane open --placement split` (or
+  `zoomed`) takes `--width 40%` for a split to the right or `--height 40%` for one below
+  (`width` and `height` in `plugin.pane.open`), as a share of the pane being split, kept
+  between 10% and 90%. Stock Herdr takes them only for popups, so a split opens at half and
+  visibly jumps when the plugin resizes it.
 
 ## settings
 
