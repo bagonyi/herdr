@@ -914,6 +914,7 @@ pub(crate) struct ClientShellState {
     pub(super) reveal_navigation_workspace: bool,
     pub(super) overlay: Option<ClientShellOverlay>,
     pub(super) previous_pane_id: Option<String>,
+    pub(super) recent_focus: super::recent_focus::RecentFocusHistory,
     pub(super) pane_mouse_gesture: Option<ClientPaneMouseGesture>,
     pub(super) link_hover: Option<super::link_hover::LinkHover>,
     pub(super) row_hover: Option<(u16, u16)>,
@@ -1081,6 +1082,7 @@ impl ClientShellState {
             reveal_navigation_workspace: false,
             overlay,
             previous_pane_id: None,
+            recent_focus: Default::default(),
             pane_mouse_gesture: None,
             link_hover: None,
             row_hover: None,
@@ -1587,6 +1589,7 @@ impl ClientShellState {
             }
         }
         self.snapshot = Some(snapshot);
+        self.note_recent_focus();
         self.reconcile_pending_workspace_highlight();
         let pending_surface = self.pending_pane_surface.take();
         if let Some(surface) = pending_surface {

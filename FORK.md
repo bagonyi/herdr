@@ -93,11 +93,23 @@ markers in the tab bar come from a separate Herdr plugin,
   ▶ and trash can buttons light up.
 - The sidebar's dividing line lights up while the mouse is over it or dragging it.
 
+### keys
+
+- `last_tab` goes back to the tab you had open before this one in the same space, and
+  `last_workspace` to the space you had open before this one, in any session. Press it again to
+  come back. Each space remembers its own last tab; closed tabs and spaces are skipped. Both are
+  unset by default.
+
 ## settings
 
-Two settings are new; both go in `~/.config/herdr/config.toml`:
+Four settings are new; all go in `~/.config/herdr/config.toml`:
 
 ```toml
+[keys]
+# Back and forth between the two latest tabs of a space, and the two latest spaces.
+last_tab = "alt+q"
+last_workspace = "alt+w"
+
 [ui.sidebar.spaces]
 # Sessions or machines to list first, in this order; the rest keep their usual order.
 machine_order = ["work", "personal"]

@@ -28,6 +28,7 @@ mod notification_policy;
 mod notifications;
 mod overlay_input;
 mod preferences;
+mod recent_focus;
 mod render;
 mod row_hover;
 mod scroll;

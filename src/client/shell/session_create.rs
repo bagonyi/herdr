@@ -330,6 +330,7 @@ impl ClientShellState {
             self.push_endpoint_method(crate::api::schema::Method::WorkspaceCreate(params), outcome);
             return;
         }
+        self.hold_recent_focus(endpoint_id.clone());
         self.after_switch_to(endpoint_id, AfterSwitch::CreateWorkspace(params), outcome);
     }
 

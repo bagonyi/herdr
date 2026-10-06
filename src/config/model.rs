@@ -434,6 +434,10 @@ pub struct KeysConfig {
     pub cycle_pane_previous: BindingConfig,
     /// Focus the last focused pane across workspaces and tabs. Unset by default.
     pub last_pane: BindingConfig,
+    /// Fork: focus the tab shown before this one in the same workspace. Unset by default.
+    pub last_tab: BindingConfig,
+    /// Fork: focus the workspace shown before this one, in any listed session. Unset by default.
+    pub last_workspace: BindingConfig,
     /// Split pane vertically (side by side). Default: "prefix+v"
     pub split_vertical: BindingConfig,
     /// Split pane horizontally (stacked). Default: "prefix+minus"
@@ -572,6 +576,10 @@ pub(crate) struct KeysConfigOverlay {
     #[serde(skip_serializing_if = "Option::is_none")]
     last_pane: Option<BindingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    last_tab: Option<BindingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_workspace: Option<BindingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     split_vertical: Option<BindingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     split_horizontal: Option<BindingConfig>,
@@ -693,6 +701,8 @@ impl<'de> Deserialize<'de> for KeysConfig {
         apply_field!(cycle_pane_next);
         apply_field!(cycle_pane_previous);
         apply_field!(last_pane);
+        apply_field!(last_tab);
+        apply_field!(last_workspace);
         apply_field!(split_vertical);
         apply_field!(split_horizontal);
         apply_field!(close_pane);
@@ -798,6 +808,8 @@ impl KeysConfig {
         copy_effective_action_field!(cycle_pane_next, keybinds.cycle_pane_next);
         copy_effective_action_field!(cycle_pane_previous, keybinds.cycle_pane_previous);
         copy_effective_action_field!(last_pane, keybinds.last_pane);
+        copy_effective_action_field!(last_tab, keybinds.last_tab);
+        copy_effective_action_field!(last_workspace, keybinds.last_workspace);
         copy_effective_action_field!(split_vertical, keybinds.split_vertical);
         copy_effective_action_field!(split_horizontal, keybinds.split_horizontal);
         copy_effective_action_field!(close_pane, keybinds.close_pane);
@@ -1167,6 +1179,8 @@ impl Default for KeysConfig {
             cycle_pane_next: BindingConfig::one("prefix+tab"),
             cycle_pane_previous: BindingConfig::one("prefix+shift+tab"),
             last_pane: BindingConfig::empty(),
+            last_tab: BindingConfig::empty(),
+            last_workspace: BindingConfig::empty(),
             split_vertical: BindingConfig::one("prefix+v"),
             split_horizontal: BindingConfig::one("prefix+minus"),
             close_pane: BindingConfig::one("prefix+x"),

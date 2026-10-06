@@ -246,6 +246,43 @@ fn plus_on_another_session_switches_to_it_then_creates_the_space() {
 }
 
 #[test]
+fn space_shown_while_switching_to_create_one_is_not_a_last_workspace() {
+    let (mut state, other) = state_with_session();
+    state.compose(100, 28).expect("frame");
+    let plus = space_plus(&state, &other);
+    click(&mut state, plus);
+    // The switch shows Other's old space until the new one opens.
+    assert!(state.activate_endpoint_projection(&other));
+    created_workspace(&state.take_after_switch());
+    let mut created = snapshot();
+    created.boot_id = "other-boot".into();
+    created.revision = 2;
+    created.workspaces[0].workspace_id = "ws_new".into();
+    created.tabs[0].tab_id = "ws_new:t1".into();
+    created.tabs[0].workspace_id = "ws_new".into();
+    created.focused_workspace_id = Some("ws_new".into());
+    created.focused_tab_id = Some("ws_new:t1".into());
+    state.set_endpoint_snapshot(&other, Box::new(created));
+
+    let mut outcome = ClientShellInput::default();
+    state.record_binding(
+        crate::input::KeybindMatch::Action(crate::input::KeybindAction::LastWorkspace),
+        &mut outcome,
+    );
+    assert!(
+        matches!(
+            outcome.actions.as_slice(),
+            [ClientShellAction::ActivateEndpoint {
+                endpoint_id: ClientEndpointId::Local,
+                target: Some(ClientEndpointFocusTarget::Workspace(workspace_id)),
+            }] if workspace_id == "ws_1"
+        ),
+        "{:?}",
+        outcome.actions
+    );
+}
+
+#[test]
 fn plus_on_another_session_with_name_prompt_asks_first() {
     let (mut state, other) = state_with_session();
     state.config.prompt_new_workspace_name = true;
