@@ -422,6 +422,7 @@ pub(super) fn render_panes(
     }
 
     render_pane_borders(app, ws, pane_infos, split_borders, frame);
+    crate::seen_flash::render_seen_flashes(app, ws, pane_infos, frame);
 }
 
 pub(crate) fn popup_pane_rects(app: &AppState, area: Rect) -> Option<(Rect, Rect)> {
@@ -480,6 +481,10 @@ fn render_pane_borders(
     }
     add_split_border_cells(app.pane_gaps, split_borders, &mut cells);
 
+    // Fork: a pane whose finished agent was just seen has its border in green.
+    let any_seen_flash = pane_infos
+        .iter()
+        .any(|info| crate::seen_flash::has_seen_flash(ws, info.id));
     let buf = frame.buffer_mut();
     let area = buf.area;
     for ((x, y), line) in cells {
@@ -497,9 +502,16 @@ fn render_pane_borders(
         if symbol.is_empty() {
             continue;
         }
+        let seen_flash = any_seen_flash
+            && pane_infos.iter().any(|info| {
+                crate::seen_flash::has_seen_flash(ws, info.id)
+                    && line_touches_pane(x, y, info, app.pane_gaps)
+            });
         let cell = &mut buf[(x, y)];
         cell.set_symbol(symbol);
-        let color = if focused {
+        let color = if seen_flash {
+            app.palette.green
+        } else if focused {
             app.palette.accent
         } else {
             app.palette.overlay0
@@ -666,7 +678,9 @@ fn render_pane_border_titles(
         if start_x >= end_x {
             continue;
         }
-        let color = if info.is_focused {
+        let color = if crate::seen_flash::has_seen_flash(ws, info.id) {
+            app.palette.green
+        } else if info.is_focused {
             app.palette.accent
         } else {
             app.palette.overlay0

@@ -331,6 +331,18 @@ impl HeadlessServer {
             let Some((workspace_index, pane_id)) = self.app.parse_pane_id(&public_pane_id) else {
                 fallback!("pane_missing");
             };
+            // Fork: the pane's output would paint over a green frame drawn on its outer cells.
+            if self.app.state.pane_has_seen_flash(workspace_index, pane_id)
+                && recipients
+                    .iter()
+                    .flat_map(|recipient| &recipient.surface.panes)
+                    .any(|pane| {
+                        pane.pane_id == public_pane_id
+                            && crate::seen_flash::frame_covers_output(pane)
+                    })
+            {
+                fallback!("seen_flash");
+            }
             let Some(runtime) = self.app.state.runtime_for_pane_in_workspace(
                 &self.app.terminal_runtimes,
                 workspace_index,

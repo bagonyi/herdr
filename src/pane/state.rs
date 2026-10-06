@@ -10,6 +10,8 @@ pub struct PaneState {
     pub seen: bool,
     /// Whether unmodified right-click gestures should be forwarded to the pane application.
     pub right_click_passthrough: bool,
+    /// Fork: the green frame shown after a finished agent's pane is seen.
+    pub seen_flash: Option<crate::seen_flash::SeenFlash>,
 }
 
 impl PaneState {
@@ -18,6 +20,7 @@ impl PaneState {
             attached_terminal_id,
             seen: true,
             right_click_passthrough: false,
+            seen_flash: None,
         }
     }
 }

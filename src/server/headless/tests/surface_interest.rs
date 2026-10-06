@@ -1023,6 +1023,7 @@ async fn window_switching_to_the_session_marks_its_current_tab_seen_once_present
 
     present_shell_window(&mut server, 52);
     assert!(server.app.state.workspaces[0].panes[&pane_id].seen);
+    assert!(server.app.state.pane_has_seen_flash(0, pane_id));
     assert_eq!(tab_focused_events(&event_hub), announced + 1);
 }
 

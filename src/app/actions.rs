@@ -478,7 +478,7 @@ impl AppState {
         let mut changed = false;
         for pane in tab.panes.values_mut() {
             if !pane.seen {
-                pane.seen = true;
+                pane.mark_seen_and_flash();
                 changed = true;
             }
         }

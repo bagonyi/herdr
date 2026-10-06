@@ -82,6 +82,12 @@ markers in the tab bar come from a separate Herdr plugin,
 - An agent that finishes in a session no window is showing counts as unseen until you look at it,
   even in the tab you last had open there. Stock Herdr counts that tab as looked at. Switching to
   another space in that session doesn't count either.
+- When you look at an agent that finished, its pane gets a green frame for 2 seconds, or until the
+  agent starts working again. A pane's border turns green; a pane without a border (a lone pane,
+  by default) gets the frame drawn over its outermost cells, so the program in it isn't resized.
+- A finished agent in a tab that comes on screen because the tab in front of it closed counts as
+  looked at right away, as if you had switched to it. Stock Herdr waits until you next type or
+  switch windows.
 - The agents panel can be hidden, giving the spaces list the whole sidebar.
 - Notifications leave out the 🟢 ⏳ 🟠 marker that [Tab Status](https://github.com/bagonyi/herdr-tab-status)
   puts in front of a tab's name. The plugin changes it only after the notification is made, so a
