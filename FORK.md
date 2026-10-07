@@ -54,8 +54,8 @@ markers in the tab bar come from a separate Herdr plugin,
 - Stopped sessions are listed under a "stopped sessions" heading below the running ones, in any
   window that lists sessions.
   Clicking the heading folds them away (hovering it shows "hide" or "show"; folded, it shows how
-  many there are). A ▶ on each starts it in the background, and clicking its name starts it and
-  switches to it. Hovering a stopped session shows a trash can that deletes it, after asking.
+  many there are). A ▶ on each starts it in the background; clicking its name does nothing.
+  Hovering a stopped session shows a trash can that deletes it, after asking.
 - Right-clicking a session offers "Stop session" and "Delete session" (stops it and forgets its
   spaces), or "Start session" and "Delete session" for a stopped one. Stop and delete ask first.
 - Right-clicking a space of another session switches to that session and opens the space's menu.

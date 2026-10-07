@@ -133,8 +133,8 @@ impl ClientShellState {
 
     /// The sessions sidebar's buttons: the + after the "sessions" heading opens a popup for a
     /// new session's name, a session's + creates a space in it and its stop button stops it.
-    /// Clicking the "stopped sessions" heading folds the list, a stopped session's play button
-    /// starts it, and clicking its name starts it and switches to it.
+    /// Clicking the "stopped sessions" heading folds the list, and a stopped session's play button
+    /// starts it; clicking its name does nothing.
     pub(super) fn handle_session_click(
         &mut self,
         point: (u16, u16),
@@ -188,37 +188,22 @@ impl ClientShellState {
             outcome.repaint = true;
             return true;
         }
-        let open = !contains(hit.play, point);
-        self.start_stopped_session(&name, open, outcome);
+        if contains(hit.play, point) {
+            self.start_stopped_session(&name, outcome);
+        }
         true
     }
 
-    /// Starts a stopped session, and switches to it once it is online if `open` is set.
-    pub(super) fn start_stopped_session(
-        &mut self,
-        name: &str,
-        open: bool,
-        outcome: &mut ClientShellInput,
-    ) {
+    /// Starts a stopped session in the background.
+    pub(super) fn start_stopped_session(&mut self, name: &str, outcome: &mut ClientShellInput) {
         outcome.repaint = true;
-        let deadline = std::time::Instant::now() + SESSION_START_TIMEOUT;
-        let own = crate::session::active_name().is_some_and(|own| own.eq_ignore_ascii_case(name));
-        let endpoint_id = if own {
-            ClientEndpointId::Local
-        } else {
-            ClientEndpointId::Ssh(crate::client::endpoint::local_session_profile_id(name))
-        };
-        if open {
-            self.session_create.session = Some((endpoint_id, name.to_owned(), deadline));
-        }
-        // Already starting, from its play button: it opens once up, but isn't started twice.
         if self.session_create.sidebar.starting.contains_key(name) {
             return;
         }
-        self.session_create
-            .sidebar
-            .starting
-            .insert(name.to_owned(), deadline);
+        self.session_create.sidebar.starting.insert(
+            name.to_owned(),
+            std::time::Instant::now() + SESSION_START_TIMEOUT,
+        );
         outcome.actions.push(ClientShellAction::StartSession {
             name: name.to_owned(),
         });

@@ -605,24 +605,17 @@ fn the_stopped_sessions_heading_folds_them_away() {
 }
 
 #[test]
-fn clicking_a_stopped_session_starts_it_and_opens_it_once_online() {
+fn clicking_a_stopped_sessions_name_leaves_it_stopped() {
     let (mut state, _) = state_with_session();
     stopped(&mut state, &["web"]);
     state.compose(100, 28).expect("frame");
-    let name = state.hits.stopped_sessions[0].rect;
-    let outcome = click(&mut state, Rect::new(name.x + 3, name.y, 1, 1));
-    assert!(matches!(
-        outcome.actions.as_slice(),
-        [ClientShellAction::StartSession { name }] if name == "web"
-    ));
-    let endpoint_id = ClientEndpointId::Ssh(local_session_profile_id("web"));
-    state.set_endpoint_catalog(&[session_profile("Other"), session_profile("web")]);
-    state.set_endpoint_status(&endpoint_id, ClientEndpointStatus::Online);
-    state.set_endpoint_snapshot(&endpoint_id, Box::new(snapshot()));
-    assert!(matches!(
-        state.poll_sessions(std::time::Instant::now()).0.as_slice(),
-        [ClientShellAction::ActivateEndpoint { endpoint_id: id, .. }] if *id == endpoint_id
-    ));
+    let hit = &state.hits.stopped_sessions[0];
+    let (play, row) = (hit.play, hit.rect);
+    let outcome = click(&mut state, Rect::new(row.x + 3, row.y, 1, 1));
+    assert!(outcome.actions.is_empty(), "only the play button starts it");
+    assert!(state.overlay.is_none());
+    state.compose(100, 28).expect("frame");
+    assert_eq!(state.hits.stopped_sessions[0].play, play, "not starting");
 }
 
 #[test]
@@ -917,27 +910,6 @@ fn a_start_that_never_comes_online_gets_its_play_button_back() {
     assert!(matches!(
         click(&mut state, play).actions.as_slice(),
         [ClientShellAction::StartSession { .. }]
-    ));
-}
-
-#[test]
-fn clicking_a_starting_sessions_name_opens_it_once_online() {
-    let (mut state, _) = state_with_session();
-    stopped(&mut state, &["web"]);
-    state.compose(100, 28).expect("frame");
-    let hit = &state.hits.stopped_sessions[0];
-    let (play, row) = (hit.play, hit.rect);
-    click(&mut state, play);
-    state.compose(100, 28).expect("frame");
-    let outcome = click(&mut state, Rect::new(row.x + 3, row.y, 1, 1));
-    assert!(outcome.actions.is_empty(), "not started twice");
-    let endpoint_id = ClientEndpointId::Ssh(local_session_profile_id("web"));
-    state.set_endpoint_catalog(&[session_profile("Other"), session_profile("web")]);
-    state.set_endpoint_status(&endpoint_id, ClientEndpointStatus::Online);
-    state.set_endpoint_snapshot(&endpoint_id, Box::new(snapshot()));
-    assert!(matches!(
-        state.poll_sessions(std::time::Instant::now()).0.as_slice(),
-        [ClientShellAction::ActivateEndpoint { endpoint_id: id, .. }] if *id == endpoint_id
     ));
 }
 

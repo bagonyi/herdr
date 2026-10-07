@@ -229,7 +229,7 @@ impl ClientShellState {
             ClientContextMenuTarget::Session { name, .. }
                 if action == ClientContextMenuAction::StartSession =>
             {
-                self.start_stopped_session(&name, false, outcome)
+                self.start_stopped_session(&name, outcome)
             }
             ClientContextMenuTarget::Session { endpoint_id, name } => self.confirm_session_stop(
                 endpoint_id,
