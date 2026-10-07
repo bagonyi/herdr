@@ -2,7 +2,7 @@
 
 Herdrsson ("son of Herdr" in Icelandic) is a personal fork of
 [herdrdev/herdr](https://github.com/herdrdev/herdr). It's unofficial: the Herdr project doesn't
-make or endorse it. The `patches` branch is the latest Herdr release with the changes below on
+make or endorse it. The `herdrsson` branch is the latest Herdr release with the changes below on
 top. Everything else is stock Herdr; see the [README](README.md) and
 [herdr.dev/docs](https://herdr.dev/docs/).
 
@@ -161,7 +161,7 @@ There are no prebuilt binaries; build it from source. You need
 [Zig](https://ziglang.org/download/) 0.16.0, either on `PATH` or named by the `ZIG` variable.
 
 ```bash
-git clone -b patches https://github.com/bagonyi/herdrsson
+git clone -b herdrsson https://github.com/bagonyi/herdrsson
 cd herdrsson
 cargo build --release --locked
 # then copy target/release/herdr somewhere on your PATH
@@ -197,7 +197,7 @@ uses the Herdr number.
 
 - Only built and tested on macOS on Apple silicon.
 - The branch is rebased onto each new Herdr release and force-pushed, so `git pull` fails
-  after an update. Use `git fetch` and `git reset --hard origin/patches` instead; this throws
+  after an update. Use `git fetch` and `git reset --hard origin/herdrsson` instead; this throws
   away any changes of your own.
 
 ## license
@@ -211,7 +211,7 @@ the commits and every changed file:
 ```bash
 git remote add upstream https://github.com/herdrdev/herdr
 git fetch upstream --tags
-base=$(git describe --tags --abbrev=0 --match 'v[0-9]*' patches)
-git log --oneline "$base"..patches
-git diff --stat "$base"..patches
+base=$(git describe --tags --abbrev=0 --match 'v[0-9]*' herdrsson)
+git log --oneline "$base"..herdrsson
+git diff --stat "$base"..herdrsson
 ```
