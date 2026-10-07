@@ -82,6 +82,10 @@ markers in the tab bar come from a separate Herdr plugin,
 
 - Each space shows a red count of agents waiting for you (finished and not yet looked at, or
   blocked), like an app badge.
+- When the tab bar is too narrow for every tab, its < and > arrows show which way to look. An
+  arrow takes the sidebar's colour for a finished agent while a tab hidden that way has one you
+  haven't looked at, and the blocked colour (red) while one there is blocked, until you answer
+  it. Stock Herdr's arrows only show whether you can scroll.
 - A window you open counts agents that finished while no window was looking, and any open
   questions, so closing and reopening it doesn't reset the counts.
 - An agent that finishes in a session no window is showing counts as unseen until you look at it,

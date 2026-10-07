@@ -73,13 +73,11 @@ pub(crate) fn render_tab_bar(
             content.y,
             hits.tab_scroll_left.width,
             " < ",
-            Style::default()
-                .fg(if *tab_scroll > 0 {
-                    palette.overlay1
-                } else {
-                    palette.overlay0
-                })
-                .bg(palette.surface0),
+            tab_scroll_button_style(
+                *tab_scroll > 0,
+                &tabs[..(*tab_scroll).min(tabs.len())],
+                palette,
+            ),
         );
         x = hits.tab_scroll_left.right();
         content
@@ -91,6 +89,7 @@ pub(crate) fn render_tab_bar(
 
     let mut first_visible = None;
     let mut last_visible = None;
+    let mut clipped_right = None;
     for (index, tab) in tabs.iter().enumerate().skip(*tab_scroll) {
         let name = tab_label(tab);
         let desired = desired_widths[index];
@@ -128,6 +127,7 @@ pub(crate) fn render_tab_bar(
         last_visible = Some(index);
         x = x.saturating_add(width + 1);
         if width < desired {
+            clipped_right = (index > *tab_scroll).then_some(index);
             break;
         }
     }
@@ -135,19 +135,22 @@ pub(crate) fn render_tab_bar(
     if overflow && mouse_chrome {
         hits.tab_scroll_right = Rect::new(tab_right, area.y, TAB_SCROLL_BUTTON_WIDTH, 1);
         let can_scroll_right = *tab_scroll < max_scroll;
+        // A tab cut short at the right edge can show no more than the "…" drawn over
+        // it, so the arrow counts it as hidden, unless it is the only tab drawn.
+        let hidden_right = clipped_right
+            .or(last_visible.map(|index| index + 1))
+            .unwrap_or(*tab_scroll);
         put_text(
             buffer,
             hits.tab_scroll_right.x,
             area.y,
             hits.tab_scroll_right.width,
             " > ",
-            Style::default()
-                .fg(if can_scroll_right {
-                    palette.overlay1
-                } else {
-                    palette.overlay0
-                })
-                .bg(palette.surface0),
+            tab_scroll_button_style(
+                can_scroll_right,
+                &tabs[hidden_right.min(tabs.len())..],
+                palette,
+            ),
         );
         hits.new_tab = Rect::new(
             hits.tab_scroll_right.right(),
@@ -288,6 +291,28 @@ fn render_tab_bar_status(
         };
         put_text(buffer, x, area.y, width, &segment.text, style);
         x = x.saturating_add(width);
+    }
+}
+
+/// A scroll arrow takes the colour of the most urgent agent hidden on its side,
+/// blocked before finished, so the user knows which way to look.
+fn tab_scroll_button_style(enabled: bool, hidden: &[&ClientShellTab], palette: &Palette) -> Style {
+    use crate::api::schema::AgentStatus;
+    let style = Style::default().bg(palette.surface0);
+    match hidden
+        .iter()
+        .map(|tab| tab.agent_status)
+        .filter(|status| matches!(status, AgentStatus::Blocked | AgentStatus::Done))
+        .max_by_key(|status| status_priority(*status))
+    {
+        Some(status) => style
+            .fg(status_color(status, palette))
+            .add_modifier(Modifier::BOLD),
+        None => style.fg(if enabled {
+            palette.overlay1
+        } else {
+            palette.overlay0
+        }),
     }
 }
 

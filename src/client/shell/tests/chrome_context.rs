@@ -47,6 +47,105 @@ fn tab_overflow_controls_scroll_the_client_owned_tab_bar() {
 }
 
 #[test]
+fn tab_scroll_arrows_take_the_colour_of_hidden_agents_needing_attention() {
+    let mut projected = snapshot();
+    projected.tabs.extend((2..=8).map(|number| ClientShellTab {
+        tab_id: format!("tab_{number}"),
+        workspace_id: "ws_1".into(),
+        number,
+        label: number.to_string(),
+        custom_label: false,
+        zoomed: false,
+        focused: false,
+        agent_status: AgentStatus::Idle,
+    }));
+    let arrow_fg = |state: &mut ClientShellState, snapshot: &ClientShellSnapshot| {
+        state.set_snapshot(Box::new(snapshot.clone()));
+        state.set_pane_surface(surface());
+        let frame = state.compose(80, 20).expect("overflow tab bar");
+        let fg = |rect: Rect| frame.cells[(rect.y * frame.width + rect.x + 1) as usize].fg;
+        (
+            fg(state.hits.tab_scroll_left),
+            fg(state.hits.tab_scroll_right),
+        )
+    };
+    let color = crate::protocol::color_to_u32;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    let palette = state.config.palette.clone();
+
+    projected.tabs[7].agent_status = AgentStatus::Done;
+    assert_eq!(
+        arrow_fg(&mut state, &projected),
+        (color(palette.overlay0), color(palette.teal)),
+        "a finished agent on a hidden tab to the right"
+    );
+
+    projected.tabs[6].agent_status = AgentStatus::Blocked;
+    assert_eq!(
+        arrow_fg(&mut state, &projected).1,
+        color(palette.red),
+        "a blocked agent outranks a finished one"
+    );
+
+    projected.tabs[0].agent_status = AgentStatus::Done;
+    projected.tabs[6].agent_status = AgentStatus::Working;
+    projected.focused_tab_id = Some("tab_8".into());
+    for tab in &mut projected.tabs {
+        tab.focused = tab.tab_id == "tab_8";
+    }
+    assert_eq!(
+        arrow_fg(&mut state, &projected),
+        (color(palette.teal), color(palette.overlay0)),
+        "a finished agent on a hidden tab to the left; working agents stay uncoloured"
+    );
+}
+
+#[test]
+fn tab_scroll_arrow_counts_a_tab_cut_short_at_the_edge_as_hidden() {
+    let mut projected = snapshot();
+    projected.tabs.extend((2..=12).map(|number| ClientShellTab {
+        tab_id: format!("tab_{number}"),
+        workspace_id: "ws_1".into(),
+        number,
+        label: number.to_string(),
+        custom_label: false,
+        zoomed: false,
+        focused: false,
+        agent_status: AgentStatus::Idle,
+    }));
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    let palette = state.config.palette.clone();
+    state.set_snapshot(Box::new(projected.clone()));
+    state.set_pane_surface(surface());
+    // Find a width that leaves the last drawn tab a single column, under the "…".
+    let (width, (last, tab_id)) = (60..140)
+        .find_map(|width| {
+            state.compose(width, 20).expect("overflow tab bar");
+            let last = state.hits.tabs.last().cloned()?;
+            (last.0.width == 1).then_some((width, last))
+        })
+        .expect("a width that cuts the last drawn tab to one column");
+
+    let index = projected
+        .tabs
+        .iter()
+        .position(|tab| tab.tab_id == tab_id)
+        .expect("drawn tab");
+    projected.tabs[index].agent_status = AgentStatus::Done;
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    let frame = state.compose(width, 20).expect("finished tab cut short");
+    let cell = |x: u16| &frame.cells[(last.y * frame.width + x) as usize];
+    assert_eq!(cell(last.x).symbol, "…", "nothing of {tab_id} is on screen");
+    let right = state.hits.tab_scroll_right;
+    assert_eq!(
+        cell(right.x + 1).fg,
+        crate::protocol::color_to_u32(palette.teal),
+        "{tab_id} is finished and cut short, so '>' points to it"
+    );
+}
+
+#[test]
 fn focused_last_overflow_tab_shows_its_full_label() {
     let mut projected = snapshot();
     let labels = [
