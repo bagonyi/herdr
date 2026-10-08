@@ -1019,6 +1019,9 @@ pub struct UiConfig {
     pub toast: ToastConfig,
     /// Play sounds when agents change state in background workspaces.
     pub sound: SoundConfig,
+    /// Fork: milliseconds a tab must stay on screen before its finished agents count as seen.
+    /// 0 counts them as seen as soon as the tab shows. Default: 1000.
+    pub seen_delay_ms: u32,
 }
 
 /// Cursor shape (DECSCUSR) used for the forced IME anchor.
@@ -1241,6 +1244,7 @@ impl Default for UiConfig {
             accent: "cyan".into(),
             toast: ToastConfig::default(),
             sound: SoundConfig::default(),
+            seen_delay_ms: 1000,
         }
     }
 }
@@ -1852,6 +1856,19 @@ redraw_on_focus_gained = false
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert!(!config.ui.redraw_on_focus_gained);
+    }
+
+    #[test]
+    fn seen_delay_defaults_to_a_second_and_zero_turns_it_off() {
+        assert_eq!(Config::default().ui.seen_delay_ms, 1000);
+
+        let toml = r#"
+[ui]
+seen_delay_ms = 0
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.ui.seen_delay_ms, 0);
+        assert!(toml::from_str::<Config>("[ui]\nseen_delay_ms = -1").is_err());
     }
 
     #[test]

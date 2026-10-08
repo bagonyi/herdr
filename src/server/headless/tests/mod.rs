@@ -7362,6 +7362,8 @@ fn agent_finishing_in_active_tab_without_a_window_stays_unseen() {
 fn focused_window_seeing_finished_agents_emits_focus_events() {
     let event_hub = api::EventHub::default();
     let mut server = test_headless_server_with_event_hub(event_hub.clone());
+    // Seen as soon as shown; `seen_flash` tests the delay.
+    server.app.state.seen_delay = std::time::Duration::ZERO;
     server.app.state.workspaces = vec![crate::workspace::Workspace::test_new("only")];
     server.app.state.ensure_test_terminals();
     server.app.state.active = Some(0);

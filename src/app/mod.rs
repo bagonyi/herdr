@@ -505,6 +505,7 @@ impl App {
             pane_scrollback_limit_bytes: config.advanced.scrollback_limit_bytes,
             sound: config.ui.sound.clone(),
             toast_config: config.ui.toast.clone(),
+            seen_delay: Duration::from_millis(config.ui.seen_delay_ms.into()),
             keybinds: config.keybinds(),
             palette: theme_palette,
             theme_name,
@@ -853,6 +854,7 @@ impl App {
                 self.state.sidebar_spaces = config.ui.sidebar.spaces.clone();
                 self.state.sound = config.ui.sound.clone();
                 self.state.toast_config = config.ui.toast.clone();
+                self.state.seen_delay = Duration::from_millis(config.ui.seen_delay_ms.into());
             }
         }
 

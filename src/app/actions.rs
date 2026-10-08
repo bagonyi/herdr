@@ -412,6 +412,7 @@ impl AppState {
                     public_tab_id_for_index(ws, active_tab).unwrap_or_else(|| workspace_id.clone());
                 crate::logging::tab_focused(&workspace_id, &tab_id);
             }
+            self.mark_active_tab_seen();
             self.record_pane_focus_after_navigation(previous_focus);
         }
     }
@@ -443,6 +444,7 @@ impl AppState {
                 public_tab_id_for_index(ws, tab_idx).unwrap_or_else(|| workspace_id.clone());
             crate::logging::tab_focused(&workspace_id, &tab_id);
         }
+        self.mark_active_tab_seen();
         self.record_pane_focus_after_navigation(previous_focus);
         true
     }
@@ -459,6 +461,7 @@ impl AppState {
             let tab_id = public_tab_id_for_index(ws, idx).unwrap_or_else(|| workspace_id.clone());
             crate::logging::tab_focused(&workspace_id, &tab_id);
             self.mark_session_dirty();
+            self.mark_active_tab_seen();
             self.record_pane_focus_after_navigation(previous_focus);
         }
     }
@@ -467,6 +470,7 @@ impl AppState {
         let Some(ws_idx) = self.active else {
             return false;
         };
+        let delay = self.seen_delay;
         let Some(tab) = self
             .workspaces
             .get_mut(ws_idx)
@@ -475,12 +479,11 @@ impl AppState {
             return false;
         };
 
+        // Fork: with a seen delay, this only starts the wait (see `seen_flash`).
+        let now = std::time::Instant::now();
         let mut changed = false;
         for pane in tab.panes.values_mut() {
-            if !pane.seen {
-                pane.mark_seen_and_flash();
-                changed = true;
-            }
+            changed |= pane.see(now, delay);
         }
         changed
     }

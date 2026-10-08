@@ -1,10 +1,15 @@
-//! Fork: a green frame around a pane for a moment after its finished agent is seen.
+//! Fork: when a finished agent counts as seen, and a green frame around its pane meanwhile.
 //!
-//! Herdr marks a finished ("done") agent seen when you switch to its tab or a window comes back
-//! to it. Its pane then gets a green frame for `SEEN_FLASH`, or until the agent starts working
-//! again. A pane's border turns green where focus would colour it (`render_pane_borders`). A pane
-//! without a border, such as a lone pane, gets the frame drawn over its outermost cells instead:
-//! the pane keeps its size and the program in it doesn't redraw.
+//! Herdr marks a finished ("done") agent seen when its tab comes on screen in the focused window:
+//! you switch to it, the window comes back to it, or the tab in front of it closes. This fork
+//! waits until the tab has stayed on screen for `AppState::seen_delay` (`ui.seen_delay_ms`), so
+//! passing a tab on the way to another leaves its agents unseen. A zero delay marks them at once.
+//!
+//! The pane gets a green frame as soon as its tab shows, for `SEEN_FLASH`, or until the agent
+//! starts working again; leaving the tab before the wait is over takes the frame away. A pane's
+//! border turns green where focus would colour it (`render_pane_borders`). A pane without a
+//! border, such as a lone pane, gets the frame drawn over its outermost cells instead: the pane
+//! keeps its size and the program in it doesn't redraw.
 
 use std::time::{Duration, Instant};
 
@@ -15,6 +20,7 @@ use crate::app::AppState;
 use crate::detect::AgentState;
 use crate::layout::{PaneId, PaneInfo};
 use crate::pane::PaneState;
+use crate::ui::TabSurfaceTarget;
 use crate::workspace::Workspace;
 
 /// How long the frame stays, counted from its first render.
@@ -33,15 +39,30 @@ impl SeenFlash {
 }
 
 impl PaneState {
-    /// Marks the pane seen and returns whether it wasn't. A pane is unseen only while its agent
-    /// has finished and no one has looked yet, so that pane gets the frame.
-    pub fn mark_seen_and_flash(&mut self) -> bool {
+    /// The pane's tab is on screen. A pane is unseen only while its agent has finished and no one
+    /// has looked yet: it gets the frame when the wait starts, and is marked seen once its tab has
+    /// stayed on screen for `delay`. Returns whether it was marked seen.
+    pub fn see(&mut self, now: Instant, delay: Duration) -> bool {
         if self.seen {
+            self.seen_wait_since = None;
+            return false;
+        }
+        let since = *self.seen_wait_since.get_or_insert_with(|| {
+            self.seen_flash = Some(SeenFlash { shown_at: None });
+            now
+        });
+        if now.saturating_duration_since(since) < delay {
             return false;
         }
         self.seen = true;
-        self.seen_flash = Some(SeenFlash { shown_at: None });
+        self.seen_wait_since = None;
         true
+    }
+
+    /// The pane's tab left the screen before its wait was over, so its agent stays unseen and
+    /// the frame goes. Returns whether a frame went.
+    fn stop_seen_wait(&mut self) -> bool {
+        self.seen_wait_since.take().is_some() && !self.seen && self.seen_flash.take().is_some()
     }
 }
 
@@ -64,13 +85,41 @@ impl AppState {
             .is_some_and(|ws| has_seen_flash(ws, pane_id))
     }
 
+    /// When the next frame ends or the next wait to count a pane as seen is over.
     pub(crate) fn next_seen_flash_deadline(&self) -> Option<Instant> {
         self.workspaces
             .iter()
             .flat_map(|ws| ws.tabs.iter())
             .flat_map(|tab| tab.panes.values())
-            .filter_map(|pane| pane.seen_flash?.until())
+            .flat_map(|pane| {
+                let wait_over = pane
+                    .seen_wait_since
+                    .and_then(|since| since.checked_add(self.seen_delay));
+                [pane.seen_flash.and_then(SeenFlash::until), wait_over]
+            })
+            .flatten()
             .min()
+    }
+
+    /// Ends the waits of panes in every tab but `shown`, the one the focused window shows, if
+    /// any. Returns whether a frame went, which needs a full render.
+    pub(crate) fn stop_seen_waits_except(&mut self, shown: Option<TabSurfaceTarget>) -> bool {
+        let mut changed = false;
+        for (workspace_index, ws) in self.workspaces.iter_mut().enumerate() {
+            for (tab_index, tab) in ws.tabs.iter_mut().enumerate() {
+                let target = TabSurfaceTarget {
+                    workspace_index,
+                    tab_index,
+                };
+                if shown == Some(target) {
+                    continue;
+                }
+                for pane in tab.panes.values_mut() {
+                    changed |= pane.stop_seen_wait();
+                }
+            }
+        }
+        changed
     }
 
     /// Starts the clock on new frames and ends frames whose time is up or whose agent is working
@@ -235,7 +284,7 @@ mod tests {
         let mut app = app_with(ws);
         set_unseen(&mut app, finished);
 
-        app.workspaces[0].switch_tab(tab);
+        app.switch_workspace_tab(0, tab);
 
         assert!(app.workspaces[0].pane_state(finished).unwrap().seen);
         assert!(app.pane_has_seen_flash(0, finished));
@@ -244,9 +293,56 @@ mod tests {
         let now = Instant::now();
         app.sync_seen_flashes(now);
         app.sync_seen_flashes(now + SEEN_FLASH);
-        app.workspaces[0].switch_tab(0);
-        app.workspaces[0].switch_tab(tab);
+        app.switch_workspace_tab(0, 0);
+        app.switch_workspace_tab(0, tab);
         assert!(!app.pane_has_seen_flash(0, finished));
+    }
+
+    #[test]
+    fn a_finished_agent_is_framed_at_once_but_seen_only_after_the_delay() {
+        let ws = Workspace::test_new("test");
+        let pane_id = ws.tabs[0].root_pane;
+        let mut app = app_with(ws);
+        set_unseen(&mut app, pane_id);
+        let delay = Duration::from_secs(1);
+        let pane = app.workspaces[0].pane_state_mut(pane_id).unwrap();
+        let now = Instant::now();
+
+        assert!(!pane.see(now, delay));
+        assert!(pane.seen_flash.is_some());
+        assert!(!pane.see(now + delay - Duration::from_millis(1), delay));
+        assert!(!pane.seen);
+        assert!(pane.see(now + delay, delay));
+        assert!(pane.seen);
+        assert_eq!(pane.seen_wait_since, None);
+        assert!(!pane.see(now + delay, delay));
+    }
+
+    #[test]
+    fn leaving_a_tab_before_the_delay_keeps_its_agent_unseen_and_unframed() {
+        let mut ws = Workspace::test_new("test");
+        let tab = ws.test_add_tab(None);
+        let finished = ws.tabs[tab].root_pane;
+        let mut app = app_with(ws);
+        app.seen_delay = Duration::from_secs(1);
+        set_unseen(&mut app, finished);
+
+        app.switch_workspace_tab(0, tab);
+        assert!(!app.workspaces[0].pane_state(finished).unwrap().seen);
+        assert!(app.pane_has_seen_flash(0, finished));
+        // The loop wakes when the wait is over, even before the frame's clock starts.
+        assert!(app.next_seen_flash_deadline().is_some());
+
+        app.switch_workspace_tab(0, 0);
+        let shown = TabSurfaceTarget {
+            workspace_index: 0,
+            tab_index: 0,
+        };
+        assert!(app.stop_seen_waits_except(Some(shown)));
+        assert!(!app.workspaces[0].pane_state(finished).unwrap().seen);
+        assert!(!app.pane_has_seen_flash(0, finished));
+        assert_eq!(app.next_seen_flash_deadline(), None);
+        assert!(!app.stop_seen_waits_except(None));
     }
 
     #[test]

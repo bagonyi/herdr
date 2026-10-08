@@ -131,10 +131,52 @@ fn bordered_pane_output_keeps_the_retained_path(server: &mut HeadlessServer, ren
     assert!(server.render_retained_pane_surface_and_stream(&HashSet::from([right])));
 }
 
+/// With a seen delay, the window's tab counts as seen only once it has been on screen that long.
+/// Moving on sooner leaves its agent unseen; coming back starts the wait over.
+fn shown_tab_counts_as_seen_after_the_delay(server: &mut HeadlessServer, render: &Render) {
+    let delay = std::time::Duration::from_secs(1);
+    server.app.state.seen_delay = delay;
+    server.clients.get_mut(&7).unwrap().outer_terminal_focus = Some(true);
+    let mut workspace = Workspace::test_new("delay");
+    let finished_tab = workspace.test_add_tab(None);
+    let finished = workspace.tabs[finished_tab].root_pane;
+    show_workspace(server, workspace, render);
+    let first_tab_id = server.app.public_tab_id(0, 0).unwrap();
+    let finished_tab_id = server.app.public_tab_id(0, finished_tab).unwrap();
+    set_unseen(server, finished);
+
+    let start = Instant::now();
+    assert!(server.focus_shell_client_on_tab(7, &finished_tab_id));
+    assert!(server.handle_scheduled_tasks_headless(start, false));
+    assert!(!seen(server, finished));
+    assert!(server.app.state.pane_has_seen_flash(0, finished));
+
+    assert!(server.focus_shell_client_on_tab(7, &first_tab_id));
+    assert!(server.handle_scheduled_tasks_headless(start + delay / 2, false));
+    assert!(!seen(server, finished));
+    assert!(!server.app.state.pane_has_seen_flash(0, finished));
+
+    let back = start + delay;
+    assert!(server.focus_shell_client_on_tab(7, &finished_tab_id));
+    server.handle_scheduled_tasks_headless(back, false);
+    assert!(!seen(server, finished));
+    assert!(
+        server
+            .app
+            .next_headless_loop_deadline_with_git_refresh(back, false, false)
+            .unwrap()
+            <= back + delay
+    );
+    assert!(server.handle_scheduled_tasks_headless(back + delay, false));
+    assert!(seen(server, finished));
+}
+
 // One server for every case: test servers created in the same instant share a socket path.
 #[tokio::test]
 async fn seen_pane_frame_on_a_server() {
     let mut server = test_headless_server();
+    // Seen as soon as shown, until the delay's own case.
+    server.app.state.seen_delay = std::time::Duration::ZERO;
     let (_control, render) = connect_matching_test_shell(&mut server, 7);
     assert_eq!(server.foreground_client_id, Some(7));
 
@@ -142,5 +184,6 @@ async fn seen_pane_frame_on_a_server() {
     closing_the_tab_in_front_counts_as_seeing_the_tab_behind(&mut server);
     focused_window_sees_only_its_own_tab(&mut server, &render);
     bordered_pane_output_keeps_the_retained_path(&mut server, &render);
+    shown_tab_counts_as_seen_after_the_delay(&mut server, &render);
     shutdown_test_runtimes(&mut server);
 }

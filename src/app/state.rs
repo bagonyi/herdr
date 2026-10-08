@@ -853,6 +853,9 @@ pub struct AppState {
     pub pane_scrollback_limit_bytes: usize,
     pub sound: SoundConfig,
     pub toast_config: ToastConfig,
+    /// Fork: how long a tab stays on screen before its finished agents count as seen
+    /// (`ui.seen_delay_ms`; see `seen_flash`).
+    pub seen_delay: std::time::Duration,
     pub keybinds: Keybinds,
     /// UI color palette — all sidebar/UI colors centralized for theming.
     pub palette: Palette,
@@ -1077,6 +1080,7 @@ impl AppState {
                 ..SoundConfig::default()
             },
             toast_config: ToastConfig::default(),
+            seen_delay: std::time::Duration::ZERO,
             keybinds: Keybinds::default(),
             palette: Palette::catppuccin(),
             theme_name: "catppuccin".to_string(),

@@ -276,6 +276,10 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Trade-off: rare host terminal surface corruption may persist until the next full redraw.
 # redraw_on_focus_gained = true
 
+# Milliseconds a tab must stay on screen before its finished agents count as seen.
+# Passing a tab on the way to another leaves them unseen. 0 counts them as seen at once.
+# seen_delay_ms = 1000
+
 # Pane scrollback lines to scroll per mouse wheel notch.
 # mouse_scroll_lines = 3
 

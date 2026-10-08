@@ -950,6 +950,8 @@ fn switching_window_server(
     event_hub: api::EventHub,
 ) -> (HeadlessServer, crate::layout::PaneId, ShellWindowChannels) {
     let mut server = test_headless_server_with_event_hub(event_hub);
+    // Seen as soon as shown; `seen_flash` tests the delay.
+    server.app.state.seen_delay = std::time::Duration::ZERO;
     server.app.state.workspaces = ["current", "other"]
         .map(crate::workspace::Workspace::test_new)
         .into();

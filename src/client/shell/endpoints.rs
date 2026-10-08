@@ -629,9 +629,9 @@ impl ClientShellState {
             None
         };
         if let Some(surface) = presented_surface {
-            self.endpoints[index]
-                .agent_presentation
-                .acknowledge_surface(&mut snapshot, surface, self.outer_focused);
+            let presentation = &mut self.endpoints[index].agent_presentation;
+            presentation.seen_delay = self.config.seen_delay;
+            presentation.acknowledge_surface(&mut snapshot, surface, self.outer_focused);
         }
         let previous = self.endpoints[index].snapshot.as_deref();
         let mut next_recency = self
@@ -712,6 +712,7 @@ impl ClientShellState {
             let Some(snapshot) = endpoint.snapshot.as_deref_mut() else {
                 return false;
             };
+            endpoint.agent_presentation.seen_delay = self.config.seen_delay;
             endpoint
                 .agent_presentation
                 .acknowledge_surface(snapshot, surface, self.outer_focused)
@@ -719,6 +720,38 @@ impl ClientShellState {
         if changed {
             self.snapshot = self.endpoints[index].snapshot.clone();
         }
+        changed
+    }
+
+    /// Fork: acknowledges agents whose pane has now been on screen for `ui.seen_delay_ms`, as no
+    /// new frame may come to do it. Panes of the sessions not on screen, and every pane while the
+    /// window is in the background, start their wait over.
+    pub(crate) fn tick_seen(&mut self) -> bool {
+        if self.config.seen_delay.is_zero() {
+            return false;
+        }
+        for endpoint in &mut self.endpoints {
+            if endpoint.endpoint_id != self.active_endpoint_id || self.outer_focused == Some(false)
+            {
+                endpoint.agent_presentation.leave_screen();
+            }
+        }
+        // Only the snapshot on display, with the frame drawn from it: while reconnecting, the old
+        // connection's frame stays up and the new connection's snapshots wait (see
+        // `cache_endpoint_snapshot_inactive_for_generation`).
+        let on_display = self.pane_surface_generation == self.active_snapshot_generation
+            && self.endpoints.iter().any(|endpoint| {
+                endpoint.endpoint_id == self.active_endpoint_id
+                    && endpoint.snapshot_generation == self.active_snapshot_generation
+            });
+        if !on_display {
+            return false;
+        }
+        let Some(surface) = self.pane_surface.take() else {
+            return false;
+        };
+        let changed = self.acknowledge_active_surface_agents(&surface);
+        self.pane_surface = Some(surface);
         changed
     }
 

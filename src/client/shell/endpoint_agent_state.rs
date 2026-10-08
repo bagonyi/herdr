@@ -13,6 +13,13 @@ pub(super) struct EndpointAgentPresentation {
         Option<u64>,
         crate::protocol::endpoint::EndpointAgentCompletions,
     )>,
+    /// Fork: a pane counts as looked at once it has been on screen this long (`ui.seen_delay_ms`).
+    pub(super) seen_delay: std::time::Duration,
+    /// Fork: when each pane on screen came into view.
+    on_screen_since: HashMap<String, std::time::Instant>,
+    /// Fork: panes whose agent the server reports idle rather than done, so it counts a finish
+    /// there as seen. A pane on screen follows it, so the window and the server agree.
+    server_seen: HashSet<String>,
 }
 
 impl EndpointAgentPresentation {
@@ -86,6 +93,12 @@ impl EndpointAgentPresentation {
                     && projection.revision == snapshot.revision
             })
             .map(|(_, projection)| projection.completions);
+        self.server_seen = snapshot
+            .agents
+            .iter()
+            .filter(|agent| agent.agent_status == AgentStatus::Idle)
+            .map(|agent| agent.pane_id.clone())
+            .collect();
         for agent in &mut snapshot.agents {
             match agent.agent_status {
                 AgentStatus::Working => {
@@ -130,16 +143,35 @@ impl EndpointAgentPresentation {
         surface: &PaneSurfaceFrame,
         outer_focused: Option<bool>,
     ) -> bool {
-        if outer_focused == Some(false)
-            || self.boot_id.as_deref() != Some(surface.boot_id.as_str())
+        if outer_focused == Some(false) {
+            self.leave_screen();
+            return false;
+        }
+        // Fork: a pane that left the screen starts its wait over when it comes back.
+        self.on_screen_since
+            .retain(|pane_id, _| surface.panes.iter().any(|pane| &pane.pane_id == pane_id));
+        if self.boot_id.as_deref() != Some(surface.boot_id.as_str())
             || snapshot.boot_id != surface.boot_id
             || snapshot.revision != surface.projection_revision
         {
             return false;
         }
 
+        let now = std::time::Instant::now();
         let mut changed = false;
         for pane in &surface.panes {
+            let since = match self.on_screen_since.get(&pane.pane_id) {
+                Some(since) => *since,
+                None => {
+                    self.on_screen_since.insert(pane.pane_id.clone(), now);
+                    now
+                }
+            };
+            if now.saturating_duration_since(since) < self.seen_delay
+                && !self.server_seen.contains(&pane.pane_id)
+            {
+                continue;
+            }
             let Some(agent) = snapshot
                 .agents
                 .iter()
@@ -160,6 +192,12 @@ impl EndpointAgentPresentation {
             project_aggregate_status(snapshot);
         }
         changed
+    }
+
+    /// Fork: nothing of this endpoint is being looked at, such as when the window is in the
+    /// background or shows another session, so every pane's wait starts over.
+    pub(super) fn leave_screen(&mut self) {
+        self.on_screen_since.clear();
     }
 
     pub(super) fn seen(&self, agent: &ClientShellAgent) -> bool {
@@ -508,6 +546,219 @@ mod tests {
         assert!(!presentation.acknowledge_surface(&mut completed, &surface(1), Some(true)));
         assert!(!presentation.acknowledge_surface(&mut completed, &surface(2), Some(false)));
         assert_eq!(completed.agents[0].agent_status, AgentStatus::Done);
+    }
+
+    #[test]
+    fn a_finished_agent_awaits_the_user_until_its_pane_stays_on_screen_for_the_delay() {
+        let delay = std::time::Duration::from_secs(1);
+        let mut presentation = EndpointAgentPresentation {
+            seen_delay: delay,
+            ..Default::default()
+        };
+        let mut working = snapshot(AgentStatus::Working, 4, 1);
+        presentation.project_snapshot(&mut working);
+        // The server reports it done: it doesn't count it as seen yet either.
+        let mut finished = snapshot(AgentStatus::Done, 5, 2);
+        presentation.project_snapshot(&mut finished);
+
+        // Just on screen: not looked at yet.
+        assert!(!presentation.acknowledge_surface(&mut finished, &surface(2), Some(true)));
+        assert!(presentation.awaits_user(&finished.agents[0]));
+
+        // The window in the background starts the wait over.
+        assert!(!presentation.acknowledge_surface(&mut finished, &surface(2), Some(false)));
+        assert!(presentation.on_screen_since.is_empty());
+
+        presentation.acknowledge_surface(&mut finished, &surface(2), Some(true));
+        for since in presentation.on_screen_since.values_mut() {
+            *since -= delay;
+        }
+        assert!(presentation.acknowledge_surface(&mut finished, &surface(2), Some(true)));
+        assert_eq!(finished.agents[0].agent_status, AgentStatus::Idle);
+        assert!(!presentation.awaits_user(&finished.agents[0]));
+    }
+
+    #[test]
+    fn a_finished_agent_on_screen_counts_as_seen_once_the_server_says_so() {
+        let mut presentation = EndpointAgentPresentation {
+            seen_delay: std::time::Duration::from_secs(1),
+            ..Default::default()
+        };
+        let mut working = snapshot(AgentStatus::Working, 4, 1);
+        presentation.project_snapshot(&mut working);
+        let mut finished = snapshot(AgentStatus::Done, 5, 2);
+        presentation.project_snapshot(&mut finished);
+        assert!(!presentation.acknowledge_surface(&mut finished, &surface(2), Some(true)));
+
+        // The server's own wait ends a moment before the window's: the window follows it, so
+        // leaving the tab now leaves no red count behind.
+        let mut seen = snapshot(AgentStatus::Idle, 5, 3);
+        presentation.project_snapshot(&mut seen);
+        assert!(presentation.acknowledge_surface(&mut seen, &surface(3), Some(true)));
+        assert!(!presentation.awaits_user(&seen.agents[0]));
+    }
+
+    #[test]
+    fn an_agent_that_finishes_on_screen_counts_as_seen_when_the_server_counts_it() {
+        let mut presentation = EndpointAgentPresentation {
+            seen_delay: std::time::Duration::from_secs(1),
+            ..Default::default()
+        };
+        let mut working = snapshot(AgentStatus::Working, 4, 1);
+        presentation.project_snapshot(&mut working);
+        presentation.acknowledge_surface(&mut working, &surface(1), Some(true));
+
+        // It finishes a moment after its tab came on screen, and the server counts it as seen.
+        let mut finished = snapshot(AgentStatus::Idle, 5, 2);
+        presentation.project_snapshot(&mut finished);
+        assert!(presentation.acknowledge_surface(&mut finished, &surface(2), Some(true)));
+        let mut elsewhere = surface(2);
+        elsewhere.panes.clear();
+        presentation.acknowledge_surface(&mut finished, &elsewhere, Some(true));
+        assert!(!presentation.awaits_user(&finished.agents[0]));
+    }
+
+    #[test]
+    fn the_timer_leaves_a_snapshot_cached_while_reconnecting_alone() {
+        use crate::client::shell::{ClientEndpointId, ClientShellConfig, ClientShellState};
+        let mut shell = ClientShellState::new(ClientShellConfig::from_config(
+            &crate::config::Config::default(),
+        ));
+        let id = ClientEndpointId::Local;
+        shell.set_endpoint_snapshot_for_generation(
+            &id,
+            4,
+            Box::new(snapshot(AgentStatus::Working, 4, 1)),
+        );
+        shell.set_pane_surface(surface(1));
+        let endpoint = shell
+            .endpoints
+            .iter_mut()
+            .find(|endpoint| endpoint.endpoint_id == id)
+            .unwrap();
+        for since in endpoint.agent_presentation.on_screen_since.values_mut() {
+            *since -= std::time::Duration::from_secs(1);
+        }
+        // A new connection's first snapshot, same boot and revision, with a finished agent.
+        shell.mark_endpoint_disconnected(&id);
+        shell.cache_endpoint_snapshot_inactive_for_generation(
+            &id,
+            5,
+            Box::new(snapshot(AgentStatus::Done, 5, 1)),
+        );
+
+        shell.tick_seen();
+        assert_eq!(
+            shell.snapshot.as_ref().unwrap().agents[0].state_change_seq,
+            4,
+            "the old connection's frame must not take in the new connection's snapshot"
+        );
+        let endpoint = shell
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.endpoint_id == id)
+            .unwrap();
+        assert_eq!(
+            endpoint.snapshot.as_ref().unwrap().agents[0].agent_status,
+            AgentStatus::Done
+        );
+    }
+
+    #[test]
+    fn the_window_in_the_background_while_reconnecting_starts_the_wait_over() {
+        use crate::client::shell::{ClientEndpointId, ClientShellConfig, ClientShellState};
+        let mut shell = ClientShellState::new(ClientShellConfig::from_config(
+            &crate::config::Config::default(),
+        ));
+        let id = ClientEndpointId::Local;
+        shell.outer_focused = Some(true);
+        shell.set_endpoint_snapshot_for_generation(
+            &id,
+            4,
+            Box::new(snapshot(AgentStatus::Working, 4, 7)),
+        );
+        shell.set_pane_surface(surface(7));
+        for since in shell
+            .endpoints
+            .iter_mut()
+            .find(|endpoint| endpoint.endpoint_id == id)
+            .unwrap()
+            .agent_presentation
+            .on_screen_since
+            .values_mut()
+        {
+            *since -= std::time::Duration::from_secs(2);
+        }
+        shell.mark_endpoint_disconnected(&id);
+        // The new connection's first snapshot waits (the agent finished meanwhile).
+        shell.cache_endpoint_snapshot_inactive_for_generation(
+            &id,
+            5,
+            Box::new(snapshot(AgentStatus::Done, 5, 1)),
+        );
+        // In the background for a while (timer ticks), then back.
+        shell.outer_focused = Some(false);
+        shell.tick_seen();
+        shell.outer_focused = Some(true);
+        // The new connection's frame comes.
+        shell.set_endpoint_snapshot_for_generation(
+            &id,
+            5,
+            Box::new(snapshot(AgentStatus::Done, 5, 2)),
+        );
+        shell.set_pane_surface(surface(2));
+        let endpoint = shell
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.endpoint_id == id)
+            .unwrap();
+        assert_eq!(
+            endpoint.unseen_agents().count(),
+            1,
+            "on screen for no time since the window came back, yet counted as seen"
+        );
+    }
+
+    #[test]
+    fn coming_back_to_the_window_while_reconnecting_leaves_the_cached_snapshot_alone() {
+        use crate::client::shell::{ClientEndpointId, ClientShellConfig, ClientShellState};
+        use crate::raw_input::RawInputEvent;
+        let mut shell = ClientShellState::new(ClientShellConfig::from_config(
+            &crate::config::Config::default(),
+        ));
+        let id = ClientEndpointId::Local;
+        shell.handle_raw_events(vec![RawInputEvent::OuterFocusGained]);
+        shell.set_endpoint_snapshot_for_generation(
+            &id,
+            4,
+            Box::new(snapshot(AgentStatus::Working, 4, 1)),
+        );
+        shell.set_pane_surface(surface(1));
+        for since in shell
+            .endpoints
+            .iter_mut()
+            .find(|endpoint| endpoint.endpoint_id == id)
+            .unwrap()
+            .agent_presentation
+            .on_screen_since
+            .values_mut()
+        {
+            *since -= std::time::Duration::from_secs(1);
+        }
+        shell.mark_endpoint_disconnected(&id);
+        shell.cache_endpoint_snapshot_inactive_for_generation(
+            &id,
+            5,
+            Box::new(snapshot(AgentStatus::Done, 5, 1)),
+        );
+        shell.handle_raw_events(vec![RawInputEvent::OuterFocusLost]);
+        shell.tick_seen();
+        shell.handle_raw_events(vec![RawInputEvent::OuterFocusGained]);
+        assert_eq!(
+            shell.snapshot.as_ref().unwrap().agents[0].state_change_seq,
+            4,
+            "the old connection's frame must not take in the new connection's snapshot"
+        );
     }
 
     #[test]

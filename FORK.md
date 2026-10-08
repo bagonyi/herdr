@@ -91,12 +91,19 @@ markers in the tab bar come from a separate Herdr plugin,
 - An agent that finishes in a session no window is showing counts as unseen until you look at it,
   even in the tab you last had open there. Stock Herdr counts that tab as looked at. Switching to
   another space in that session doesn't count either.
+- A finished agent counts as looked at only once its tab has stayed on screen for a second (the
+  `seen_delay_ms` setting). Skipping past its tab on the way to another, or switching windows
+  sooner, leaves it waiting for you: its red count, the tab bar's arrows and Tab Status's 🟢 stay.
+  An agent's question keeps its red count the same way. Stock Herdr counts both as looked at the
+  moment their tab shows. An agent that finishes while its tab is on screen in the focused window
+  still counts as looked at straight away.
 - When you look at an agent that finished, its pane gets a green frame for 2 seconds, or until the
-  agent starts working again. A pane's border turns green; a pane without a border (a lone pane,
+  agent starts working again. It shows as soon as the tab does, and goes if you leave before the
+  agent counts as looked at. A pane's border turns green; a pane without a border (a lone pane,
   by default) gets the frame drawn over its outermost cells, so the program in it isn't resized.
 - A finished agent in a tab that comes on screen because the tab in front of it closed counts as
-  looked at right away, as if you had switched to it. Stock Herdr waits until you next type or
-  switch windows.
+  looked at, as if you had switched to it. Stock Herdr waits until you next type or switch
+  windows.
 - The agents panel can be hidden, giving the spaces list the whole sidebar.
 - Notifications leave out the 🟢 ⏳ 🟠 marker that [Tab Status](https://github.com/bagonyi/herdr-tab-status)
   puts in front of a tab's name. The plugin changes it only after the notification is made, so a
@@ -128,9 +135,14 @@ markers in the tab bar come from a separate Herdr plugin,
 
 ## settings
 
-Four settings are new; all go in `~/.config/herdr/config.toml`:
+Five settings are new; all go in `~/.config/herdr/config.toml`:
 
 ```toml
+[ui]
+# Milliseconds a tab must stay on screen before its finished agents count as looked at.
+# 0 counts them at once, as stock Herdr does. Default: 1000.
+seen_delay_ms = 1000
+
 [keys]
 # Back and forth between the two latest tabs of a space, and the two latest spaces.
 last_tab = "alt+q"

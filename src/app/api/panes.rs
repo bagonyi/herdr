@@ -4276,6 +4276,8 @@ mod tests {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.outer_terminal_focus = Some(false);
+        // Fork: seen at once, as with `ui.seen_delay_ms = 0`.
+        app.state.seen_delay = std::time::Duration::ZERO;
 
         let pane_id = app.state.workspaces[0].tabs[0].root_pane;
         let terminal_id = app.state.workspaces[0].tabs[0].panes[&pane_id]
