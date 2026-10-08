@@ -194,7 +194,7 @@ released, and the Herdr release it's built on.
 
 ```
 $ herdr --version
-herdrsson 2026.10.07 (based on herdr 0.9.3)
+herdrsson 2026.10.08 (based on herdr 0.9.3)
 ```
 
 A second release on the same day ends in `.2`. Moving onto a new Herdr release changes only the
@@ -204,6 +204,8 @@ uses the Herdr number.
 - 2026.10.06 (on Herdr 0.9.3): the first release as Herdrsson.
 - 2026.10.07 (on Herdr 0.9.3): the tab bar's < and > arrows show which way a waiting agent is; a
   plugin can open a split at a set size; clicking a stopped session's name no longer starts it.
+- 2026.10.08 (on Herdr 0.9.3): a finished agent counts as looked at only once its tab has stayed
+  on screen for a second (`seen_delay_ms`).
 
 ## caveats
 
